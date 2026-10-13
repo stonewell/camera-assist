@@ -1,4 +1,4 @@
-# 照片复盘应用开发方案 v1.2（iOS + 桌面端 macOS / Windows / Linux）
+# 照片复盘应用开发方案 v1.3（iOS + 桌面端 macOS / Windows / Linux）
 
 > - **范围**：事后的照片复盘应用。**移动端只做 iOS（iPadOS 顺带支持）；桌面端跨平台，覆盖 macOS、Windows、Linux。**
 > - **关系**：从帮拍相机方案（`ios-app-development-plan.md`）中拆分出来；两者共用 Rust 规则核心 `compose-core`、阈值和文案。版本变化见附录 A。
@@ -128,8 +128,13 @@ camera-assist/
 │  ├─ ReviewApp/                         照片复盘 iOS 应用
 │  ├─ Packages/
 │  │  ├─ ComposeKit/                     compose-ffi 的 Swift 封装（两个 iOS 应用共用）
-│  │  └─ PerceptionVision/               Vision 感知后端（两个 iOS 应用共用）
-│  └─ Tools/compose-eval-vision/         Swift 命令行离线评测（Vision 后端，macOS），报告格式与 Rust 版一致
+│  │  ├─ PerceptionVision/               Vision 感知后端（两个 iOS 应用共用）
+│  │  ├─ PerceptionKit/                  实时感知（帮拍相机专有）
+│  │  ├─ CaptureKit/                     AVCaptureSession 与相机控件（帮拍相机专有）
+│  │  └─ GuideKit/                       帮拍辅助：路人帮拍、语音播报（帮拍相机专有）
+│  └─ Tools/
+│     ├─ compose-eval-vision/            Swift 命令行离线评测（Vision 后端，macOS），报告格式与 Rust 版一致
+│     └─ capture-replay/                 真机录制回放工具（帮拍相机专有）
 ├─ desktop/                              Flutter 桌面应用（macOS / Windows / Linux）
 ├─ shared/
 │  ├─ config/Thresholds.json             规则阈值（带版本号，所有应用共用）
@@ -181,7 +186,7 @@ camera-assist/
 | `settings` | AutoSettingsPolicy | 相机方案 9 | 帮拍相机 |
 | `still` | 静态图分析入口、歪斜规则、修正建议（拉直、裁切）、"下次这样拍"卡片生成 | 本文档 4.3 | 照片复盘 |
 | `report` | 多张照片的问题聚合、旅行报告 | 本文档 7.4 | 照片复盘 |
-| `config` | 读取 `shared/config/Thresholds.json`，叠加 `backendOverrides` | 本文档 5.4 | 两者 |
+| `config` | 读取 `shared/config/Thresholds.json`，叠加 `backendOverrides` | 相机方案 8.7、本文档 4.3、5.4 | 两者 |
 
 `compose-core` 本身不依赖任何 FFI 框架：UniFFI 的派生宏通过 `uniffi` feature 条件启用（`compose-ffi` 打开该 feature）；`flutter_rust_bridge` 在 `review-bridge` 中通过镜像类型引用同一批结构。
 
@@ -208,6 +213,10 @@ pub struct LatLon { pub lat: f64, pub lon: f64 }   // UniFFI 不支持元组，�
 
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
 #[derive(Clone, Debug)]
+pub struct Rect { pub x: f64, pub y: f64, pub width: f64, pub height: f64 }
+
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Clone, Debug)]
 pub struct ExifSummary {
     pub taken_at_utc: Option<i64>,       // 秒；由 DateTimeOriginal + OffsetTimeOriginal 换算（4.3）
     pub location: Option<LatLon>,
@@ -217,6 +226,14 @@ pub struct ExifSummary {
     pub iso: Option<f64>,
     pub focal_35mm: Option<f64>,         // FocalLengthIn35mmFilm
     pub camera_model: Option<String>,
+}
+
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Clone, Debug)]
+pub struct Lesson {
+    pub rule_id: String,
+    pub reason_key: String,
+    pub params: std::collections::HashMap<String, String>,
 }
 
 #[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
@@ -237,6 +254,26 @@ pub enum FixSuggestion {
     StraightenAndCrop { angle_deg: f64, rect: Rect },
 }
 
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Clone, Debug)]
+pub struct IssueSummary {
+    pub rule: String,
+    pub count: u32,
+    pub ratio: f64,
+}
+
+#[cfg_attr(feature = "uniffi", derive(uniffi::Record))]
+#[derive(Clone, Debug)]
+pub struct TripReport {
+    pub trip_id: Option<i64>,
+    pub trip_name: Option<String>,
+    pub total_photos: u32,
+    pub portrait_photos: u32,
+    pub top_issues: Vec<IssueSummary>,
+    pub fixable_count: u32,
+    pub lessons: Vec<Lesson>,
+}
+
 /// 配置是不可变对象，跨 FFI 以共享引用传递
 #[cfg_attr(feature = "uniffi", derive(uniffi::Object))]
 pub struct Config { /* 解析后的 Thresholds.json + 后端覆盖 */ }
@@ -254,7 +291,7 @@ pub fn aggregate_report(items: Vec<StillReport>, cfg: Arc<Config>) -> TripReport
 
 | 规则 | 判定 | 修正建议 |
 |---|---|---|
-| `still.tilt` | 地平线可信时：\|地平线角度\| > 1.5°；没有地平线时：竖直线角度的加权中位数偏离 90° 超过 1.5° | `Straighten`，裁掉旋转后的黑边 |
+| `still.tilt` | 地平线可信时：\|地平线角度\| > 1.5°；没有地平线时：竖直线角度的加权中位数偏离 90° 超过 1.5°【待验证 spike R8】 | `Straighten`，裁掉旋转后的黑边 |
 | `still.keystone` | 竖直线向上明显汇聚（仰拍导致楼歪） | 不提供修正（梯形校正会让人变形），只给"下次手机拿竖直" |
 | 裁切类（`head.cut`、`limbCut.*`、`feet.floating`） | 与帮拍相机相同 | 不可修正，只给"下次这样拍" |
 | `headroom`（太多）、`edge.crowd`、`scale`（太小） | 与帮拍相机相同 | `Crop`：在不切到人的前提下，按 4:3 / 原比例重新裁切；裁切后分辨率低于原图 50% 时不推荐 |
@@ -263,7 +300,7 @@ pub fn aggregate_report(items: Vec<StillReport>, cfg: Arc<Config>) -> TripReport
 | 光线类 | 光向需要拍摄方向：有 `GPSImgDirection` 时才判断顺光、侧光、逆光；没有时只用人脸亮度比判断"逆光脸暗" | 不可修正（提亮交给照片 App 或其他修图工具），只给"下次这样拍" |
 | `distance.distortion` | 由 `focal_35mm` 换算视场角，再用眼距或身高估算距离 | 不可修正，只给"下次切 2× 后退" |
 
-**拍摄时区**：只有 `DateTimeOriginal`、没有 `OffsetTimeOriginal` 时，用 GPS 坐标离线查时区（Rust `tzf-rs` 等离线时区库）；两者都没有时，不做太阳相关的判断。
+**拍摄时区**：只有 `DateTimeOriginal`、没有 `OffsetTimeOriginal` 时，用 GPS 坐标离线查时区（Rust `tzf-rs` 等离线时区库）【待验证 spike R10】；两者都没有时，不做太阳相关的判断。
 
 **静态图专用阈值**（写在共享的 `shared/config/Thresholds.json` 中，帮拍相机不读取）：
 
@@ -469,7 +506,7 @@ CREATE TABLE batch (
 CREATE TABLE fix (
   id INTEGER PRIMARY KEY,
   photo_id INTEGER NOT NULL REFERENCES photo(id) ON DELETE CASCADE,
-  batch_id INTEGER REFERENCES batch(id),       -- 单张修正时也会生成一个只含一张的批次
+  batch_id INTEGER REFERENCES batch(id) ON DELETE SET NULL,       -- 单张修正时也会生成一个只含一张的批次
   kind TEXT NOT NULL, params_json TEXT NOT NULL,
   output_path TEXT,                            -- 生成的新文件或侧车文件
   backup_path TEXT,                            -- 被修改的已有侧车文件的备份
@@ -478,6 +515,8 @@ CREATE TABLE fix (
 CREATE INDEX idx_finding_rule  ON finding(rule);
 CREATE INDEX idx_finding_photo ON finding(photo_id);
 CREATE INDEX idx_photo_trip    ON photo(trip_id);
+CREATE INDEX idx_fix_batch     ON fix(batch_id);
+CREATE INDEX idx_fix_photo     ON fix(photo_id);
 ```
 
 撤销以批次为单位：删除该批次生成的新文件、用备份恢复侧车文件，然后标记 `batch.undone_at`。
@@ -720,7 +759,7 @@ compose-eval diff vision.json onnx.json
 
 | 阶段 | 周 | 内容 | 退出标准 |
 |---|---|---|---|
-| **P0 基础与验证** | W1–3（与帮拍相机 M0 同一周开始） | Rust workspace、`compose-ffi` → XCFramework 流水线（与帮拍相机共同完成）、CI 矩阵；`compose-core` 骨架与黄金向量格式；spike R1、R2、R3、R7、R9 | 模型和许可证确定；单张 ONNX 分析 < 400 ms；Flutter 网格在 Linux 上滚动达标 |
+| **P0 基础与验证** | W1–2（与帮拍相机 M0 同一周开始） | Rust workspace、`compose-ffi` → XCFramework 流水线（与帮拍相机共同完成）、CI 矩阵；`compose-core` 骨架与黄金向量格式；spike R1、R2、R3、R7、R9 | 模型和许可证确定；单张 ONNX 分析 < 400 ms；Flutter 网格在 Linux 上滚动达标 |
 | **P1 共享核心** | W3–10 | W3–4：`model`、`geometry`、`classify`、`config`、`compose-ffi` + `ComposeKit`；W5–7：规则 A–D、合并、仲裁器（与帮拍相机 M2 同步）；W7–8：`still`、`report`；W8–10：`light`、`optics`、规则 E–G、`settings`（与帮拍相机 M4 同步）；黄金向量贯穿全程 | Rust 与 Swift 都通过全部黄金向量；帮拍相机 M2、M4 按时接入 |
 | **P2 桌面引擎** | W6–11 | `perception-onnx`（检测、分割、姿态、人脸、直线，三个系统的加速）、`media-io`（解码、EXIF、缩略图、导出、XMP）、`review-engine`（扫描、队列、SQLite、旅行分组、批次撤销） | 1000 张照片批量分析达标；文件安全专项测试通过 |
 | **P3 应用** | W8–14 | 桌面：导入、网格、详情、批量修正、报告、设置；iOS：首页、网格、详情、PhotoKit 写回、分享扩展、深链接、报告 | 两端主流程走通；`compose-eval` 两个后端都达到 85% 精确率、一致率 ≥ 90% |
@@ -809,7 +848,8 @@ compose-eval diff vision.json onnx.json
 | v0.1 | 从帮拍相机方案的"B 轨：照片复盘"迁移内容，列出待决问题 |
 | v1.0 | 确定平台范围（iOS + macOS / Windows / Linux）；技术选型：Rust 共享核心、SwiftUI、Flutter 桌面、Vision / ONNX 双感知后端；完整开发方案 |
 | v1.1 | 帮拍相机决定共用 Rust 核心；排期与帮拍相机对齐 |
-| v1.2 | 两份方案联合评审后的修正与润色（见下表） |
+| v1.2 | 两份方案联合评审后的修正与润色 |
+| v1.3 | 开发方案深化评审后的问题修复（见下表） |
 
 ### v1.2 修正明细
 
@@ -827,3 +867,14 @@ compose-eval diff vision.json onnx.json
 | 联动 | 深链接参数与帮拍相机方案 12.1 统一（`mode`、`focus`、`src`） | 10 |
 | 排期 | P1 拆成与帮拍相机 M2、M4 同步的阶段，修正"P1 在 W7 前交付 A–G"与"E–G 在 W8–10 交付"的矛盾；新增两项目的周对照表 | 14.2、14.3 |
 | 结构 | 文档头精简；第 2.3 节改为决策记录与待决事项；新增本附录 | 文档头、2.3、附录 A |
+
+### v1.3 修正明细
+
+| 类别 | 修正 | 位置 |
+|---|---|---|
+| 排期矛盾 | 修正 14.2 阶段表中 P0 写为 `W1–3` 的错误，统一为 `W1–2`，与 14.3 对照表和帮拍相机 M0 保持一致 | 14.2 |
+| 类型补全 | 在 4.2 中正式补齐 `Rect`、`Lesson`、`IssueSummary`、`TripReport` 的 UniFFI Record 定义，消除外部未定义类型 | 4.2 |
+| 数据库健全 | `fix` 表增加 `batch_id` 外键级联定义，新增 `idx_fix_batch` 与 `idx_fix_photo` 索引，避免批量撤销与详情查询全表扫描 | 7.2 |
+| 验证项标记 | 静态图 `still.tilt` 与拍摄时区离线推断补齐 `【待验证 spike R8】` 与 `【待验证 spike R10】` 标签 | 4.3 |
+| 一致性 | 仓库结构补齐 Apple 侧专有 Package（`CaptureKit`、`PerceptionKit`、`GuideKit`）与 `capture-replay` 工具 | 3.1 |
+| 规范引用 | `config` 模块的规格来源补充引用相机方案 8.7 与本文档 4.3 | 4.1 |

@@ -1,4 +1,4 @@
-# 帮拍相机 iOS App 开发方案 v1.4
+# 帮拍相机 iOS App 开发方案 v1.5
 
 > - **范围**：iOS 实时帮拍相机。事后的照片复盘是独立应用，见 `photo-review-app-plan.md`；两者共用 Rust 规则核心 `compose-core`。
 > - **前身**：本文档合并并替代三份早期文档（已移到 `archive/`：`composition-rule-engine-ios.md`、`native-camera-leverage-ios.md`、`light-distance-advisor-ios.md`）；帮拍辅助功能来自 `helper-mode-features-research.md`。版本变化见附录 A。
@@ -207,10 +207,14 @@ camera-assist/
 │  └─ Tools/
 │      ├─ compose-eval-vision/        macOS 命令行：Vision 后端评测（PerceptionVision + ComposeKit），报告格式与 Rust 版一致
 │      └─ capture-replay/             macOS 命令行：回放真机录制的 .capturelog 到 ComposeKit 的仲裁器
+├─ desktop/                           Flutter 桌面应用（macOS / Windows / Linux，详见 photo-review-app-plan.md）
 ├─ shared/
 │  ├─ config/Thresholds.json          阈值（带版本号，所有应用共用）
-│  └─ hints/zh-Hans.json, en.json     文案（构建时生成 iOS 的 .strings）
-└─ fixtures/golden/                   黄金测试向量（Rust 与 Swift 都必须通过）
+│  ├─ hints/zh-Hans.json, en.json     文案（构建时生成 iOS 的 .strings）
+│  └─ models/                         ONNX 模型与清单（桌面端复盘应用使用）
+└─ fixtures/
+   ├─ golden/                         黄金测试向量（Rust 与 Swift 都必须通过）
+   └─ eval-dataset/                   离线标注评测集（对象存储）
 ```
 
 **分工原则**：
@@ -230,9 +234,14 @@ public final class LiveComposer: @unchecked Sendable {   // 只在 analysisQueue
         engine = try LiveEngine(configJson: config.json, backend: "vision")
     }
 
-    /// 输入一帧感知结果，返回本帧的提示输出（HintOutput）和建议的设置
-    public func step(_ frame: Frame, light: LightContext?, t: TimeInterval) -> LiveOutput {
-        LiveOutput(engine.step(frame: frame.ffi, light: light?.ffi, t: t))
+    /// 输入一帧感知结果，返回本帧的提示输出（HintOutput）和建议的设置（t 默认取 frame.t）
+    public func step(_ frame: Frame, light: LightContext?, t: TimeInterval? = nil) -> LiveOutput {
+        LiveOutput(engine.step(frame: frame.ffi, light: light?.ffi, t: t ?? frame.t))
+    }
+
+    /// 设置深链接聚焦的规则（延迟减半）
+    public func setFocus(_ ruleID: String?) {
+        engine.setFocus(ruleId: ruleID)
     }
 
     /// 重新加载阈值（调试面板使用）；调用方负责派发到 analysisQueue
@@ -337,15 +346,17 @@ session.addOutput(analysis)
 
 // 4) 系统控件（同时出现在相机控制按键上）
 if session.supportsControls {
-    session.addControl(AVCaptureSystemZoomSlider(device: device))
-    session.addControl(AVCaptureSystemExposureBiasSlider(device: device))
+    let zoomSlider = AVCaptureSystemZoomSlider(device: device)
+    if session.canAddControl(zoomSlider) { session.addControl(zoomSlider) }
+    let biasSlider = AVCaptureSystemExposureBiasSlider(device: device)
+    if session.canAddControl(biasSlider) { session.addControl(biasSlider) }
     // 自定义菜单只放两项：引导 开/关、语音 开/关（11.2.5）；选项顺序统一为 [开, 关]
-    let guide = AVCaptureIndexPicker("引导", symbolName: "sparkles", localizedIndexTitles: ["开", "关"])
-    let voice = AVCaptureIndexPicker("语音", symbolName: "speaker.wave.2", localizedIndexTitles: ["开", "关"])
+    let guide = AVCaptureIndexPicker(localizedTitle: "引导", symbolName: "sparkles", localizedIndexTitles: ["开", "关"])
+    let voice = AVCaptureIndexPicker(localizedTitle: "语音", symbolName: "speaker.wave.2", localizedIndexTitles: ["开", "关"])
     guide.selectedIndex = 0                  // 引导默认开
     voice.selectedIndex = 1                  // 语音默认关
-    session.addControl(guide)
-    session.addControl(voice)
+    if session.canAddControl(guide) { session.addControl(guide) }
+    if session.canAddControl(voice) { session.addControl(voice) }
 }
 session.commitConfiguration()
 
@@ -410,7 +421,7 @@ previewView.addInteraction(shutter)
 
 ### 7.1 输出数据结构
 
-> 这些结构在 `compose-core` 中定义（UniFFI Record），`ComposeKit` 提供同名的 Swift 值类型。`PerceptionKit` 负责填充，规则引擎只读取。
+> 这些结构在 `compose-core` 中定义（UniFFI Record），`ComposeKit` 提供同名的 Swift 值类型（例如 Rust 中的 `ColumnRange` 映射为 Swift 的 `ClosedRange<CGFloat>`，`Point` / `Rect` 映射为 `CGPoint` / `CGRect`）。`PerceptionKit` 负责填充，规则引擎只读取。
 
 ```swift
 // 成片坐标：原点左上，x 向右、y 向下，范围 [0,1]，按最终照片画幅归一化
@@ -509,13 +520,13 @@ motion.startDeviceMotionUpdates(using: .xTrueNorthZVertical, to: motionQueue) { 
     // 俯仰：设备 z 轴指向屏幕外；镜头朝上时屏幕朝下，g.z → +1
     let elevation = asin(max(-1, min(1, g.z))) * 180 / .pi
 
-    // roll：按当前拍摄方向（RotationCoordinator 给出）计算
+    // roll：按当前拍摄方向（RotationCoordinator 给出）计算（换算为角度）
     let roll: Double
     switch Int(captureAngle) {
-    case 90:  roll = atan2(g.x, -g.y)      // 竖持（已验证推导）
-    case 270: roll = atan2(-g.x, g.y)      // 倒持【符号待验证】
-    case 0:   roll = atan2(-g.y, -g.x)     // 横持【符号待验证】
-    default:  roll = atan2(g.y, g.x)       // 另一侧横持【符号待验证】
+    case 90:  roll = atan2(g.x, -g.y) * 180 / .pi      // 竖持（已验证推导）
+    case 270: roll = atan2(-g.x, g.y) * 180 / .pi      // 倒持【符号待验证】
+    case 0:   roll = atan2(-g.y, -g.x) * 180 / .pi     // 横持【符号待验证】
+    default:  roll = atan2(g.y, g.x) * 180 / .pi       // 另一侧横持【符号待验证】
     }
 
     // 镜头方位：后置镜头指向设备 −Z；把它转换到参考系后取水平分量
@@ -1172,6 +1183,10 @@ public final class HintArbiter {
     "minInterval": 2.5, "repeatAfter": 6.0, "maxRepeats": 1,
     "captureQuietWindow": 1.5, "rate": 0.52, "speakGood": true
   },
+  "still": {
+    "tiltMinDeg": 1.5, "tiltMaxAutoDeg": 8.0, "keystoneMinConvergeDeg": 3.0,
+    "cropMinKeepRatio": 0.5, "cropAspects": ["original", "4:3"], "horizonMinConfidence": 0.6
+  },
   "backendOverrides": {
     "vision": {},
     "onnx":   { "limbCut": { "minWristConf": 0.4 }, "head": { "noseNeckFactor": 1.0 } }
@@ -1199,7 +1214,7 @@ public final class HintArbiter {
 | `steps(−N)` | 往前走 N 步 | 人太小了 / 补光够不到 |
 | `cropTighter` | 或者往上只拍到大腿 | （备选，小字） |
 | `pan` | 镜头往左/右移一点 | 让 TA 看的方向多留点空间 |
-| `tilt` | 镜头往上/下抬一点 | 头顶空太多 |
+| `tilt` | 镜头往下移/往上抬一点 | 头顶空太多 / 头顶太挤 |
 | `switchZoom(2)` | 切到 2×，后退 N 步 | 离太近脸会变形 |
 | `orbit` | 绕着 TA 往左/右走约 X° | 换成侧光更有立体感 |
 | `subjectTurn` | 让 TA 转身对着你 | （和 `orbit` 一起出现） |
@@ -1308,7 +1323,7 @@ final class CameraSettingsApplier {
 
 ---
 
-## 11. 帮拍辅助功能
+## 11. 帮拍辅助功能：路人帮拍模式、语音播报
 
 > 来源：`helper-mode-features-research.md` 的 F6、F3。其余候选功能见第 21 节。
 
@@ -1420,10 +1435,19 @@ func strangerCue(_ a: AlignmentState, ref: ReferenceShot, captureAngle: CGFloat,
         return isPortrait(ref.captureAngle) ? .holdUpright : .holdSideways
     }
     if abs(a.rollDiffDeg) > t.rollDeg { return .levelPhone }
-    if abs(a.scale - 1) > t.scale { return a.scale > 1 ? .stepBack : .stepForward }
-    if abs(a.offset.dx) > t.offset { return a.offset.dx > 0 ? .moveLeft : .moveRight }
-    if abs(a.offset.dy) > t.offset || abs(a.pitchDiffDeg) > t.pitchDeg {
-        return (a.offset.dy > 0 || a.pitchDiffDeg < 0) ? .tiltUp : .tiltDown
+
+    // 配准置信度低时（纹理少/前景人物干扰），不使用图像偏移，仅依靠 IMU 提示俯仰
+    let regReliable = a.confidence >= 0.5
+    if regReliable {
+        if abs(a.scale - 1) > t.scale { return a.scale > 1 ? .stepBack : .stepForward }
+        if abs(a.offset.dx) > t.offset { return a.offset.dx > 0 ? .moveLeft : .moveRight }
+        if abs(a.offset.dy) > t.offset || abs(a.pitchDiffDeg) > t.pitchDeg {
+            return (a.offset.dy > 0 || a.pitchDiffDeg < 0) ? .tiltUp : .tiltDown
+        }
+    } else {
+        if abs(a.pitchDiffDeg) > t.pitchDeg {
+            return a.pitchDiffDeg < 0 ? .tiltUp : .tiltDown
+        }
     }
     return peopleInSlots ? .ready : .waitForPeople
 }
@@ -1536,6 +1560,8 @@ final class VoicePrompter {
             repeats = isNew ? 0 : repeats + 1
             lastID = f.id; lastSpokenAt = t
         case .good where cfg.speakGood && lastID != "good":
+            guard t - lastSpokenAt >= cfg.minInterval else { return }
+            if synth.isSpeaking { synth.stopSpeaking(at: .word) }
             speak(Hints.spokenGood); lastID = "good"; lastSpokenAt = t
         default:
             break
@@ -1993,3 +2019,18 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 一致性 | 两个 `AVCaptureIndexPicker` 的选项顺序统一；埋点入口去掉已移除的"分享"；"第三方依赖"一栏补上 Rust 依赖；`Thresholds.json` 补上 `backendOverrides` | 6.1、15、17、8.7 |
 | 排期 | M3、M4 中 Rust 工作的负责人写明；关键路径去掉历史说明 | 18 |
 | spike | 已迁移的 #7、#16 写明迁移后的编号（照片复盘 R8、R5） | 20 |
+
+### A.6 v1.5：开发方案深化评审后的问题修复
+
+| 类别 | 修正 | 位置 |
+|---|---|---|
+| 计算错误 | `MotionProvider` 中计算 `roll` 角未将弧度乘以 `180 / .pi`，导致 `rollDeg` 永远无法达到角度阈值；已补上角度换算 | 7.6 |
+| 语法/API | `AVCaptureIndexPicker` 初始化缺少必需的 `localizedTitle:` 参数标签，补充 `canAddControl` 检查 | 6.1 |
+| 逻辑缺陷 | `strangerCue` 在图像配准置信度低（`confidence < 0.5`）时未降级，仍使用漂移的偏移量与缩放；现已对齐规格，低置信度时仅依靠 IMU 提示 | 11.1.5 |
+| 接口补全 | `LiveComposer` 补齐深链接所需的 `setFocus(_ ruleID: String?)` 方法；`step` 的时间戳参数 `t` 明确以 `frame.t` 为基准 | 5.1.1 |
+| 语音防冲突 | `VoicePrompter.handle` 在触发 `.good` 时增加最小间隔判断与当前播报打断，避免与前序提示语音重叠 | 11.2.3 |
+| 一致性 | 补齐 monorepo 目录树中缺失的 `desktop/`、`shared/models/` 和完整 `fixtures/` 结构 | 5.1 |
+| 目录对齐 | 第 11 节标题与目录对齐为"帮拍辅助功能：路人帮拍模式、语音播报" | 11 |
+| 文案修正 | `tilt` 动作文案细化区分往下移（头顶空太多）与往上抬（头顶太挤） | 8.8 |
+| 配置补齐 | `Thresholds.json` 示例中补齐静态图 `still` 配置，与共享配置文件保持一致 | 8.7 |
+| 类型映射说明 | 明确 `MaskSummary.topColumns` 在 Rust UniFFI 侧为 `ColumnRange` 记录类型，在 Swift 封装层转为 `ClosedRange<CGFloat>` | 7.1 |
