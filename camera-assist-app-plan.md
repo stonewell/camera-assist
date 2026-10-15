@@ -1,6 +1,6 @@
-# 帮拍相机 iOS App 开发方案 v1.5
+# 帮拍相机 iOS App 开发方案 v1.6
 
-> - **范围**：iOS 实时帮拍相机。事后的照片复盘是独立应用，见 `photo-review-app-plan.md`；两者共用 Rust 规则核心 `compose-core`。
+> - **范围**：iOS 实时帮拍相机。事后的照片复盘是独立应用，见 `photo-review-app-plan.md`；两者共用 Rust 规则核心 `compose-core`。全项目研发优先级与排期对齐见 `development-priorities.md`。
 > - **前身**：本文档合并并替代三份早期文档（已移到 `archive/`：`composition-rule-engine-ios.md`、`native-camera-leverage-ios.md`、`light-distance-advisor-ios.md`）；帮拍辅助功能来自 `helper-mode-features-research.md`。版本变化见附录 A。
 > - **约定**：【待验证】表示需要真机 spike 确认（汇总在第 20 节）。文中代码为设计级示例，未经编译，API 名称以最新 SDK 为准。第 7、8 节中属于 `compose-core` 的 Swift 代码是**算法规格**，实际实现为 Rust。
 
@@ -18,8 +18,8 @@
 8. 规则引擎（Rust compose-core + Swift 封装 ComposeKit）
 9. 自动设置 AutoSettings
 10. 照片复盘（已拆分为独立应用）
-11. 帮拍辅助功能：路人帮拍模式、语音播报
-12. 入口与扩展
+11. 帮拍辅助功能：路人帮拍模式（App Clip 扫码拍摄 + 自动回传 / 单机备选）、语音播报
+12. 入口与扩展（含 App Clip 唤起与配置）
 13. UI / UX
 14. 隐私与合规
 15. 工程规范
@@ -44,10 +44,11 @@
 | 4 | **一次只给一条提示**：仲裁器负责防抖、优先级、冷却、手动时静默 | 帮拍者无法同时处理多条提示；被忽略的提示不反复打扰 | 8.5、8.6 |
 | 5 | **预测是先验、实测为准**：太阳位置和天气只用来解释原因，逆光、阴影以相机实测为准 | 楼影、树荫、室内会让预测失效 | 7.9 |
 | 6 | **自动设置只做安全、可撤销的项**（曝光补偿、一键补光、一键焦段），不做手动 ISO / 快门 | 手动曝光只在 `speed` 优先级下生效，会失去多帧融合 | 9 |
-| 7 | **帮拍辅助只做两项**：路人帮拍模式、语音播报 | 成本低、复用现有模块，直接对应旅行帮拍的高频痛点 | 11 |
-| 8 | **相册只申请"仅添加"权限**；路人帮拍的照片先在 App 内挑选，只保存保留的 | 最小权限；不在相册里留下废片 | 6.4、11.1.7 |
+| 7 | **帮拍辅助：App Clip 扫码帮拍（免交接，首选）+ 单机交接（备选）+ 语音播报** | 扫码帮拍彻底消除手机交接的防盗抢与隐私焦虑；零安装极速调起，成片自动回传本人手机 | 11 |
+| 8 | **相册只申请"仅添加"权限**；路人帮拍的照片先在 App 内挑选，只保存保留的 | 最小权限；不在相册里留下废片 | 6.4、11.1.10 |
 | 9 | **最低 iOS 18**，iOS 26 的能力（镜头脏污检测、deferred start）按需启用 | 相机控制按键 API、锁屏扩展需要 iOS 18 | 3 |
 | 10 | **全部本地处理**，不上传画面、人脸和精确位置 | 隐私与合规 | 14 |
+| 11 | **App Clip 架构极简、零 Rust 依赖，包体积 < 5 MB** | 严格遵守 Apple 15 MB 体积上限；构图决策由主人端完成，App Clip 仅做 Vision 配准与回传；数据通道采用端到端加密（E2EE）短时中继 | 5.1、11.1、12.3 |
 
 ---
 
@@ -68,18 +69,18 @@
 | 角色 | 描述 | 我们提供的 |
 |---|---|---|
 | 帮拍者（主要用户） | 男友、闺蜜、家人；不懂构图和光线 | 实时、口语化、一次只给一条的动作提示；可以用耳朵听提示，不必一直盯着屏幕 |
-| 陌生人帮拍者 | 旅途中临时请来帮忙的路人，语言可能不通 | 路人帮拍模式：只需要对准画面、看到绿框就按快门 |
-| 被拍者（决策者、传播者） | 在意出片效果，往往是推荐 App 的人 | 拍后快速复核；（v1.1）在自己的手机上实时看预览 |
+| 陌生人帮拍者 | 旅途中临时请来帮忙的路人，语言可能不通 | **App Clip 扫码帮拍**：自带 iPhone 原生相机扫码即开（无需安装 App），只需对准绿框按快门，成片自动回传给主人；亦可单机交接 |
+| 被拍者（决策者、传播者） | 在意出片效果，往往是推荐 App 的人 | 拍后快速复核；选定场景后一键生成帮拍码让路人拍；（v1.1）在自己的手机上实时看预览 |
 
 ### 2.3 产品形态
 
-本 App 是**单一的实时帮拍相机**：
+本 App 是**单一的实时帮拍相机**，配合**免安装的路人 App Clip**：
 
 | 项目 | 内容 |
 |---|---|
-| 使用方式 | 打开 App、按相机控制按键或从锁屏进入，用我们的取景器拍 |
-| 能力 | 构图提示 + 光线、站位提示 + 有限的自动设置 + 语音播报 + 路人帮拍模式 |
-| 价值 | 当场拍好 |
+| 使用方式 | 打开 App、按相机控制按键或从锁屏进入取景；请路人帮拍时可一键展示 App Clip 码 |
+| 能力 | 构图提示 + 光线站位提示 + 有限的自动设置 + 语音播报 + **路人帮拍（App Clip 扫码回传 / 单机模式）** |
+| 价值 | 当场拍好；请路人帮拍时免交接手机、零安装即开、成片即刻回传 |
 
 **相关产品**：事后的"照片复盘"（构图体检、一键拉直和裁切、光线复盘）拆分为独立的移动端 + 桌面端应用（`photo-review-app-plan.md`），与本 App 共享 Rust 规则核心 `compose-core` 和配置，并通过深链接互相跳转（第 10 节）。
 
@@ -87,8 +88,14 @@
 
 **做：**
 - 实时引导：构图规则（水平、俯仰、裁切、位置、大小）、光线规则、距离与焦段规则、镜头脏污和低光提示、有限的自动设置。
-- 帮拍辅助：**路人帮拍模式**（锁定构图 + 对齐引导 + 极简陌生人界面）、**语音播报提示**。
-- 入口：相机控制按键、锁屏和控制中心扩展、深链接（供照片复盘应用跳转）。
+- 帮拍辅助：
+  - **路人帮拍模式**：
+    - 主人端构图锁定与站位框标记；
+    - **App Clip 扫码帮拍（首选）**：展示 App Clip 码，路人免装 1 秒唤起，双向对齐指引，成片端到端加密自动秒传回本人手机；
+    - **单机交接模式（备选）**：手持交接防误触界面、退出长按验证。
+  - **语音播报提示**（TTS）。
+- 入口与扩展：相机控制按键、锁屏和控制中心扩展、深链接、**App Clip 独立 Target 与关联域名唤起**。
+- 跨机通信：`SyncKit` 模块 + 轻量端到端加密（E2EE）中继服务。
 - 工具：`compose-eval-vision` 离线评测、`capture-replay` 真机录制回放。
 
 **不做：** 照片复盘（已拆分为独立应用）、姿势匹配、双机协作、智能连拍选片、路人入画检测、表情口令卡、偏好卡、大模型场景建议、滤镜调色、图库、夜间模式、视频、前置摄像头、Android（调研过但未纳入的功能见第 21 节）。
@@ -193,17 +200,22 @@ camera-assist/
 │  ├─ compose-ffi/                    UniFFI 绑定 → XCFramework（iOS 真机、iOS 模拟器、macOS——供 Tools 使用）+ Swift Package
 │  └─ compose-eval/                   Rust 命令行评测（ONNX 后端，供照片复盘应用的桌面端使用）
 ├─ apple/
-│  ├─ CameraApp/                      ★ 本 App
-│  │   ├─ App/                        SwiftUI 外壳：首页、设置、引导、深链接处理
-│  │   ├─ CameraFeature/              取景页（UIKit：预览层 + 叠加层）、拍后快速复核
+│  ├─ CameraApp/                      ★ 本 App（主应用）
+│  │   ├─ App/                        SwiftUI 外壳：首页、设置、引导、深链接处理、帮拍码展示
+│  │   ├─ CameraFeature/              取景页（UIKit：预览层 + 叠加层）、拍后快速复核、挑图页
 │  │   └─ Extensions/LockedCameraExtension/  锁屏、控制中心入口（复用 CaptureKit + ComposeKit）
+│  ├─ CameraAppClip/                  ★ 路人帮拍 App Clip（免安装轻应用，< 5MB）
+│  │   ├─ AppClipEntry.swift          Universal Link / App Clip 码路由（解析会话 ID 与 E2EE 密钥）
+│  │   ├─ ClipCameraView.swift        极简取景器与叠加层（半透明参考帧、红黄绿引导框、大快门）
+│  │   └─ ClipCompletionView.swift    致谢与同步反馈页（可选自留相册、导流主 App）
 │  ├─ ReviewApp/                      照片复盘 iOS 应用
 │  ├─ Packages/
-│  │   ├─ ComposeKit/                 compose-ffi 之上的 Swift 薄封装：值类型、Sendable、Swift 风格 API（两个 iOS 应用共用）
+│  │   ├─ ComposeKit/                 compose-ffi 之上的 Swift 薄封装：值类型、Sendable、Swift 风格 API（主 App 与复盘 App 共用，App Clip 不链接）
 │  │   ├─ PerceptionVision/           Vision 感知后端：姿态、实例掩码、人脸、地平线（两个 iOS 应用共用）
 │  │   ├─ PerceptionKit/              本 App 的实时感知：调度、跟踪、平滑、CoreMotion、CoreLocation、天气 → Frame
 │  │   ├─ CaptureKit/                 AVCaptureSession 配置、拍照、系统控件、CameraSettingsApplier
-│  │   └─ GuideKit/                   帮拍辅助：路人帮拍模式（参考帧、对齐估计、状态机）、语音播报（VoicePrompter）
+│  │   ├─ GuideKit/                   帮拍辅助：路人帮拍模式（参考帧、对齐估计、状态机）、语音播报（VoicePrompter）
+│  │   └─ SyncKit/                    ★ 跨机通信：E2EE 临时会话管理、AES-GCM-256 加解密、ReferencePackage 与成片传输
 │  └─ Tools/
 │      ├─ compose-eval-vision/        macOS 命令行：Vision 后端评测（PerceptionVision + ComposeKit），报告格式与 Rust 版一致
 │      └─ capture-replay/             macOS 命令行：回放真机录制的 .capturelog 到 ComposeKit 的仲裁器
@@ -218,8 +230,9 @@ camera-assist/
 ```
 
 **分工原则**：
-- **Rust `compose-core`**：一切与平台无关的逻辑——数据结构、规则、分类器、几何、距离换算、太阳位置与光线融合、合并、仲裁器、自动设置策略。
-- **Swift**：一切依赖 Apple 框架的部分——采集、Vision 推理、IMU、定位、天气、UI、语音，以及路人帮拍（依赖 Vision 图像配准，只有本 App 使用）。
+- **Rust `compose-core`**：一切与平台无关的规则核心——数据结构、规则、分类器、几何、距离换算、太阳位置与光线融合、合并、仲裁器、自动设置策略。**App Clip 不链接 Rust 静态库**（由主 App 在锁定构图时生成轻量参考包）。
+- **Swift**：一切依赖 Apple 框架的部分——采集、Vision 推理、IMU、定位、天气、UI、语音，以及路人帮拍（依赖 Vision 图像配准与 CoreMotion，主 App 与 App Clip 均可运行）。
+- **SyncKit**：轻量跨机同步模块，纯 Swift（CryptoKit + Network / URLSession / MultipeerConnectivity），供主 App 与 App Clip 共用，实现点对点或云端中继的端到端加密数据传输。
 
 ### 5.1.1 ComposeKit 封装
 
@@ -1327,84 +1340,155 @@ final class CameraSettingsApplier {
 
 > 来源：`helper-mode-features-research.md` 的 F6、F3。其余候选功能见第 21 节。
 
-### 11.1 路人帮拍模式
+### 11.1 路人帮拍模式（App Clip 扫码拍摄 + 自动回传 / 单机备选）
 
-#### 11.1.1 要解决的问题
+#### 11.1.1 要解决的问题与演进背景
 
-情侣、家庭出游时请陌生人帮拍，对方不知道你想要什么样的照片，结果常常不可用：人太小、歪斜、构图和你设想的完全不同。陌生人也不会花时间去理解提示。
+情侣、家庭出游时请陌生人帮拍，存在两大核心痛点：
+1. **构图失控**：对方不知道你想要什么样的照片，拍出来的结果常常不可用（人太小、地平线歪斜、切头切脚、背景杂乱），陌生人也没有耐心听复杂的构图指导。
+2. **交接焦虑与心理防线**：在景区让陌生人拿自己的 iPhone，存在极强的**财产安全担忧**（防抢、防跑、防摔坏）以及**隐私心理负担**（担心被窥探微信聊天、相册、银行应用等）。
 
-**设计思路**（借鉴 Pixel Add Me 的"对齐引导"这一步）：**由主人决定构图，陌生人只负责"对准"。** 陌生人看到的只有一个参考画面、方向箭头、红/绿框和一个特大快门按钮。
+**核心设计理念**：
+- **由主人决定构图，陌生人只负责"对准"**。
+- **提供双模式架构**：
+  - **模式 A：App Clip 扫码帮拍（首选推荐）**：主人锁定构图后生成 App Clip 码，路人用**自己的 iPhone** 扫码 1 秒唤起 App Clip（**无需下载 App**），对齐拍完后照片**自动秒传回主人手机**，全程双方**零手机交接、零相册隐私泄露**。
+  - **模式 B：单机交接模式（备选降级）**：路人使用非 iOS 设备或极端离线时，主人把手机锁在极简防误触模式下交给路人，拍完后通过长按 / 面容 ID 退出。
 
-#### 11.1.2 流程
-
-```
-① 主人设定（取景页 → "路人帮拍"）
-   用正常的帮拍取景器取好景（构图和光线提示照常工作）
-   → 拖动、缩放"站位框"，标出自己和同伴要站的位置（默认按当前景别生成 1–2 个框）
-   → 选择陌生人界面的语言（默认中文 + English）
-   → 选择是否开启"对齐后自动连拍"
-   → 按"锁定构图"：保存参考帧，锁定焦段
-
-② 交接
-   界面切换为陌生人模式，主人把手机交给陌生人，走进站位框
-
-③ 对齐（陌生人）
-   取景画面上叠加半透明的参考帧 + 方向箭头
-   框：红色（偏差大）→ 黄色（接近）→ 绿色（对齐，且人已站进站位框）
-   绿色时：轻震 + 提示音 +"请按快门 / Tap to shoot"
-
-④ 拍摄
-   每按一次快门连拍 3 张；开启自动连拍时，绿色保持 0.5 秒自动连拍，最多 5 组
-
-⑤ 归还与挑图（主人）
-   主人长按右上角 2 秒（或通过面容 ID）退出陌生人模式
-   → 查看本次拍到的照片：按"对齐程度 + 构图问题"排序，标出推荐的几张
-```
-
-#### 11.1.3 状态机
+#### 11.1.2 模式 A：App Clip 扫码帮拍核心流程
 
 ```
- [setup] ──锁定构图──▶ [handoff] ──检测到画面移动或人进入站位框──▶ [aligning]
-    ▲                                                              │  ▲
-    │                                               全部达标 ≥ 0.5s │  │ 任一项超出 unaligned 阈值
-    │                                                              ▼  │
-    │                                                          [ready] ──按快门 / 自动──▶ [capturing]
-    │                                                                                   │
-    │                                                                        连拍完成 → 回到 [aligning]
-    └──────────────── 主人长按 2 秒或面容 ID 验证 ──── [review] ◀─────────────────────────┘
+① 主人设定构图（CameraApp 取景页 → "路人帮拍"）
+   主人在自己的取景器里用规则引擎辅助取好景（地平线、黄金光线提示正常生效）
+   → 在画面上拖拽、缩放"站位框"（标注自己与同伴待会要站的位置）
+   → 选择路人界面语言（中文 / English / 日语 / 韩语等）
+   → 点击"生成帮拍码"：锁定构图为 ReferenceShot，在本地生成 E2EE 密钥对与临时会话
+
+② 扫码与免装调起（路人端）
+   主人手机屏幕全屏展示 App Clip 码（或普通二维码），展示友好文案："请帮我们拍张照，扫码免装 App 即可拍"
+   → 路人拿出自带 iPhone，使用系统原生相机扫码
+   → 屏幕弹出系统级 App Clip 胶囊横幅（"帮拍相机 帮拍助手"），路人轻点"打开"
+   → 1 秒内直接唤起 App Clip 取景器（包体积 < 5 MB，无需 App Store 下载，免注册免登录）
+
+③ 加载参考与双向对齐引导（路人端）
+   App Clip 启动后凭借 URL 携带的会话 ID 与密钥拉取约 30 KB 的参考数据包（ReferencePackage）
+   → 取景器实时画面上叠加半透明参考帧、目标站位框与方向箭头
+   → 图像配准算法实时计算路人当前镜头与参考画面的偏差：
+     边框呈现：红色（偏差大）→ 黄色（接近）→ 绿色（对齐且主人已走入站位框）
+   → 变绿时：轻微震动 + 清脆提示音 +"请按快门 / Tap to shoot"（主人在远处也能听到）
+
+④ 拍摄与即时回传（双端协同）
+   路人按下特大快门按钮（或开启自动连拍时，绿框保持 0.5 秒自动连拍 3 张）
+   → App Clip 在后台以并发加密流将成片（全尺寸 HEIC/JPEG + 对齐元数据）上传到短时中继服务
+   → 主人端通过保持的 WebSocket / SSE 长连接实时拉取成片推流
+   → 主人手机震动通知："已收到路人帮拍照片（3张）"
+
+⑤ 双端收尾与主人挑图
+   路人端：拍摄完毕后显示轻快致谢页："照片已自动同步给对方，非常感谢您的热心帮助！"
+           （路人相册默认不保存任何废片；可点击"我也存一份"自留一张；底部展示轻量主 App 导流卡片）
+   主人端：自动进入"挑选成片"页面，按对齐程度排序并默认勾选最佳 3 张，保存入相册
+   云端：中继会话在完成或 15 分钟 TTL 超时后自毁，零痕迹残留
 ```
 
-- `aligning` 与 `ready` 之间用两组阈值（`aligned` / `unaligned`）做迟滞，避免框颜色来回闪。
-- 陌生人模式中**隐藏**：相册入口、缩略图、设置、模式切换、变焦滑杆（焦段锁定为参考值）。
-- iOS 不允许 App 阻止用户回到主屏幕，所以无法完全"锁住"手机。设定页提示主人："如果担心隐私，可以先开启系统的'引导式访问'"。
+#### 11.1.3 双端时序与通信架构
 
-#### 11.1.4 参考帧
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Owner as 主人 (主 App)
+    actor Stranger as 路人 (App Clip)
+    participant Relay as 云端轻量 E2EE 中继 (Relay)
+
+    Note over Owner: 1. 主人取景构图
+    Owner->>Owner: 构图对齐完成，调整站位框，点击"生成帮拍码"
+    Owner->>Owner: CryptoKit 生成 AES-GCM-256 密钥 key & 会话 uuid
+    Owner->>Relay: POST /session (上传加密 ReferencePackage ~30KB)
+    Owner->>Relay: 建立 WebSocket 监听成片推送
+    Owner->>Owner: 屏幕展示 App Clip Code (https://camera-assist.app/clip?sid=uuid#k=key)
+
+    Note over Stranger, Owner: 2. 扫码调起 App Clip
+    Stranger->>Owner: 原生相机扫码
+    Stranger->>Stranger: 系统 App Clip 弹窗唤起 (<1s 极速冷启动)
+    Stranger->>Relay: GET /session/{uuid}/ref
+    Relay-->>Stranger: 返回加密 ReferencePackage
+    Stranger->>Stranger: 本地用 URL Fragment 中的 key 解密参考帧
+
+    Note over Stranger: 3. 对齐取景与拍摄
+    Stranger->>Stranger: 画面叠加半透明参考图 + Vision 图像配准 (10Hz)
+    Stranger->>Stranger: 姿态到位 + 主人进入站位框 -> 绿框 + 提示音
+    Stranger->>Stranger: 点击快门 (连拍 3 张)
+
+    Note over Stranger, Owner: 4. 实时回传与收尾
+    Stranger->>Relay: POST /session/{uuid}/photos (加密 CapturePackage)
+    Relay-->>Owner: WebSocket 推送成片到达事件
+    Owner->>Relay: 拉取并解密成片数据
+    Owner->>Owner: 震动通知并呼出挑图页
+    Stranger->>Stranger: 展示致谢页："已同步给对方，谢谢！"
+    Relay->>Relay: 会话结束，删除所有密文缓存 (TTL 15min)
+```
+
+#### 11.1.4 数据契约与端到端加密（E2EE）
+
+数据包定义位于 `SyncKit` 共享模块中：
 
 ```swift
-public struct ReferenceShot {
-    let registrationImage: CVPixelBuffer   // 320×240 灰度，用于图像配准
-    let overlayImage: CGImage              // 半透明叠加用的彩色缩略图
-    let zoomFactor: CGFloat                // 锁定的焦段
-    let captureAngle: CGFloat              // 拍摄方向（0/90/180/270），陌生人横竖拿反时提示
-    let elevationDeg: Double               // 参考时的俯仰角
-    let rollDeg: Double                    // 参考时的 roll（通常已被构图提示校正到接近 0）
-    let slots: [CGRect]                    // 站位框（成片坐标）
-    let shotType: ShotType
+/// 主人发送给路人 App Clip 的参考数据包 (~30 KB)
+public struct ReferencePackage: Codable, Sendable {
+    public let sessionId: String
+    public let createdAt: Date
+    public let thumbnailJpegData: Data        // 320×240 彩色半透明参考缩略图 (~15-25 KB)
+    public let registrationGrayData: Data     // 320×240 灰度直方图归一化配准图 (~10 KB)
+    public let targetZoomFactor: CGFloat      // 锁定的参考焦段 (如 1.0×, 2.0×)
+    public let captureAngle: CGFloat          // 0, 90, 180, 270 (防横竖拿反)
+    public let elevationDeg: Double           // 俯仰角
+    public let rollDeg: Double                // 手机歪斜角
+    public let slots: [CGRect]                // 站位框 (归一化成片坐标 0~1)
+    public let languageCode: String           // 路人界面第二语言 (如 "en", "ja")
+    public let autoBurstEnabled: Bool         // 对齐后是否自动连拍
+}
+
+/// 路人 App Clip 回传给主人的照片包
+public struct CapturePackage: Codable, Sendable {
+    public let sessionId: String
+    public let photoId: String
+    public let sequenceIndex: Int             // 连拍序号 (0, 1, 2)
+    public let capturedAt: Date
+    public let fullPhotoData: Data            // 完整高质量成片数据 (HEIC 或 JPEG)
+    public let previewThumbnailData: Data     // 快速预览缩略图 (~30 KB，用于主人端即时首帧秒开)
+    public let alignmentOffset: CGVector      // 拍摄时刻与参考的平移偏差
+    public let alignmentScale: Double         // 远近缩放比例
+    public let wasReadyState: Bool            // 拍摄时是否处于绿框 ready 状态
+    public let deviceModel: String            // 路人机型 (如 "iPhone 15 Pro")
 }
 ```
 
-- 参考帧只保存在内存中，退出路人帮拍模式后丢弃，不写入相册，不上传。
-- 站位框默认值：当前画面里已有的主体包围框；再按景别在旁边生成一个同样大小的框，代表主人自己。主人可以拖动、缩放、删除。
+**端到端加密与零知识中继**：
+- 主人端在本地通过 `CryptoKit.SymmetricKey(size: .bits256)` 生成高强度密钥。
+- 密钥编码在 App Clip URL 的 **Fragment**（锚点，即 `#k=BASE64_KEY`）中。
+  > 依据 RFC 3986 与 HTTP 协议规范，URL 锚点部分（`#` 之后）由客户端本地解析，**绝不会随 HTTP 请求发送给中继服务器**。
+- 中继服务器仅充当盲转发管道（Blind Forwarding Pipeline），无法解密参考图与拍摄成片，彻底规避任何敏感图像在服务端泄露的风险。
 
-#### 11.1.5 对齐估计
+#### 11.1.5 跨机通信通道设计
 
-三类信号合在一起判断"陌生人拿的手机和参考画面差多少"：
+| 通道 | 模式 | 协议 | 适用场景 | 权限要求 |
+|---|---|---|---|---|
+| **Ephemeral Cloud Relay（主通道）** | 扫码帮拍（在线） | HTTPS + WebSocket（轻量无状态云中继，15 分钟 TTL） | 绝大多数景区、城市、旅行场景（双方有网络） | **零弹窗**（无需本地网络授权，极速直连） |
+| **MultipeerConnectivity（离线兜底）** | 扫码帮拍（离线） | Apple P2P Wi-Fi + 蓝牙直连 | 深山、峡谷、游轮等无蜂窝信号场景 | 路人端会触发一次系统的"本地网络连接"确认弹窗 |
+| **单机交接（备选模式）** | 单机手持交接 | 进程内内存暂存，长按退出防误触 | 路人为安卓用户或无意愿扫码的场合 | 仅需主机相机权限 |
 
-| 信号 | 来源 | 频率 | 给出 |
-|---|---|---|---|
-| 平移 | `VNTranslationalImageRegistrationRequest`（参考帧 vs 当前帧，均为 320×240 灰度） | 10 Hz | 画面左右、上下的偏移 |
-| 缩放、旋转 | `VNHomographicImageRegistrationRequest` | 3 Hz | 远近（站得太前或太后）、画面旋转 |
-| 俯仰、roll | IMU，与参考值相减 | 60 Hz | 镜头上下抬、手机歪 |
+- **自动降级逻辑**：主人端在生成帮拍码时自动检测当前网络状况：若有可用网络，默认生成云中继二维码；若主人端处于无网络状态，App 自动无缝切换为"离线 P2P 模式"，二维码内写入 MPC 局域网会话标识，并在屏幕下方提示"当前处于离线模式，扫码后请在弹窗中允许连接"。
+
+#### 11.1.6 硬件差异与焦段适配策略
+
+路人所持 iPhone 硬件可能与主人不同（例如主人使用 iPhone 16 Pro 的 5× 长焦取景，而路人使用标准版双摄 iPhone 15）：
+1. **FOV 自动归一化**：主人端将参考帧的视场角（水平 FOV）写入 `ReferencePackage`。路人 App Clip 启动时，查询本机可用摄像头硬件；
+2. **焦段匹配**：
+   - 若路人设备支持等效物理焦段，自动切换为对应物理镜头；
+   - 若路人设备物理镜头焦段小于参考值（如无长焦），App Clip 自动应用 `videoZoomFactor` 数码裁切至相同 FOV，确保取景器内的背景透视和主体大小与参考帧严格一致；
+   - 在取景器边缘用小字提示"已自动对齐取景焦段"。
+
+#### 11.1.7 对齐估计算法与状态机
+
+在 App Clip 内部，对齐判断复用 `GuideKit` 中的核心轻量算法（纯 Swift + 系统框架）：
 
 ```swift
 public struct AlignmentState {
@@ -1420,23 +1504,20 @@ public enum StrangerCue: Equatable {
     case stepForward, stepBack                     // 远近
     case levelPhone                                // 手机歪了
     case holdUpright, holdSideways                 // 横竖拿反
-    case waitForPeople                             // 已对齐，等人站进站位框
-    case ready
+    case waitForPeople                             // 已对齐，等待主人站进站位框
+    case ready                                     // 完全对齐，可拍摄
 }
 
-/// 竖持：90° / 270°；横持：0° / 180°。同一类别内的差异由 RotationCoordinator 处理，画面始终是正的
-func isPortrait(_ angle: CGFloat) -> Bool { Int(angle) % 180 == 90 }
-
 /// 每次只给一个提示，按这个顺序：横竖 → 歪斜 → 远近 → 平移 → 俯仰 → 等人 → 可以拍
-func strangerCue(_ a: AlignmentState, ref: ReferenceShot, captureAngle: CGFloat,
+func strangerCue(_ a: AlignmentState, ref: ReferencePackage, captureAngle: CGFloat,
                  peopleInSlots: Bool, cfg: StrangerConfig, wasReady: Bool) -> StrangerCue {
-    let t = wasReady ? cfg.unaligned : cfg.aligned          // 迟滞
+    let t = wasReady ? cfg.unaligned : cfg.aligned          // 迟滞防抖
     if isPortrait(captureAngle) != isPortrait(ref.captureAngle) {
         return isPortrait(ref.captureAngle) ? .holdUpright : .holdSideways
     }
     if abs(a.rollDiffDeg) > t.rollDeg { return .levelPhone }
 
-    // 配准置信度低时（纹理少/前景人物干扰），不使用图像偏移，仅依靠 IMU 提示俯仰
+    // 配准置信度低时（纹理少/前景干扰），不使用图像偏移，仅依靠 IMU 提示俯仰
     let regReliable = a.confidence >= 0.5
     if regReliable {
         if abs(a.scale - 1) > t.scale { return a.scale > 1 ? .stepBack : .stepForward }
@@ -1453,62 +1534,77 @@ func strangerCue(_ a: AlignmentState, ref: ReferenceShot, captureAngle: CGFloat,
 }
 ```
 
-- **配准的方向约定**（`alignmentTransform` 是把哪张图映射到哪张图）需要用真机确认，上面的正负号以确认结果为准【spike #18】。
-- **前景人物干扰**：配准主要依靠背景纹理，参考帧里没有人、当前帧里有人，会影响结果。对策：配准前用人像掩码把人物区域涂成均值灰度；配准置信度低时，只用 IMU 给出俯仰和歪斜提示，平移箭头隐藏【spike #18】。
-- **人到位检查**：每个站位框都至少有一个主体包围框与之 IoU ≥ 0.5；同时构图规则中没有 critical 级问题（例如切头）。
+- **状态转移**：
+  ```
+   [clip_init] ──获取参考包成功──▶ [aligning] ──全部达标 ≥ 0.5s──▶ [ready]
+                                     ▲                             │
+                                     │     任一项超出 unaligned 阈值 │
+                                     └─────────────────────────────┤
+                                                                   ▼
+   [completed] ◀──后台回传成功──── [capturing] ◀──按快门 / 自动连拍─┘
+  ```
 
-#### 11.1.6 陌生人界面
+#### 11.1.8 陌生人 App Clip 界面与交互规范
 
 ```
 ┌──────────────────────────────────┐
-│               请帮我们拍照                     │
+│          请帮我们拍张照（已对齐即可拍）      │
 │          Please take a photo for us          │
-│  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  │ ← 红 / 黄 / 绿框（整个取景区域的边框）
+│  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  │ ← 红 / 黄 / 绿框（整个取景框边框）
 │  ┃   半透明参考画面叠加在实时画面上   ┃  │
-│  ┃          ⬅  往左一点               ┃  │ ← 只有一个大箭头 + 双语短句
+│  ┃          ⬅  往左一点               ┃  │ ← 只有一个居中大箭头 + 双语短文案
 │  ┃             Move left              ┃  │
-│  ┃       ┌ ─ ┐  ┌ ─ ┐                 ┃  │ ← 站位框（虚线）；人站进去后变实线
+│  ┃       ┌ ─ ┐  ┌ ─ ┐                 ┃  │ ← 站位框（虚线；主人站进去后变实线高亮）
 │  ┃       └ ─ ┘  └ ─ ┘                 ┃  │
 │  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛  │
 │                                              │
-│                   ( ● )                      │ ← 特大快门按钮（绿色时脉动）
-│                                    [完成·长按]│ ← 只有主人知道
+│                   ( ● )                      │ ← 超大快门按钮（绿色时呼吸动效）
+│  [× 退出]                                    │
 └──────────────────────────────────┘
 ```
 
-| 提示 | 中文 | English |
-|---|---|---|
-| `moveLeft` / `moveRight` | 往左一点 / 往右一点 | Move left / Move right |
-| `tiltUp` / `tiltDown` | 镜头往上 / 往下一点 | Tilt up / Tilt down |
-| `stepForward` / `stepBack` | 往前走一步 / 往后退一步 | Step forward / Step back |
-| `levelPhone` | 手机拿正 | Hold the phone level |
-| `holdUpright` / `holdSideways` | 请竖着拿 / 请横着拿 | Hold it upright / sideways |
-| `waitForPeople` | 等他们站好 | Wait for them to get in place |
-| `ready` | 请按快门 | Tap to shoot |
+**双语短文案列表**：
 
-- 语言：中文 + 主人选择的第二语言（默认 English；可选日语、韩语、泰语等常见旅游目的地语言，文案随包）。
-- 绿色出现时播放一声短提示音（不是语音），主人站在远处也能听到"对齐了"。
-- 字号固定为大号，不随动态字体缩小。
+| 提示状态 | 中文 | English | 日语（可选） |
+|---|---|---|---|
+| `moveLeft` / `moveRight` | 往左一点 / 往右一点 | Move left / Move right | 左へ / 右へ |
+| `tiltUp` / `tiltDown` | 镜头往上 / 往下一点 | Tilt up / Tilt down | 上へ / 下へ |
+| `stepForward` / `stepBack` | 往前走一步 / 往后退一步 | Step forward / Step back | 前へ / 後ろへ |
+| `levelPhone` | 手机拿正 | Hold the phone level | 水平にしてください |
+| `holdUpright` / `holdSideways` | 请竖着拿 / 请横着拿 | Hold upright / sideways | 縦向き / 横向き |
+| `waitForPeople` | 等被拍者站好 | Wait for them to get in place | 被写体を待っています |
+| `ready` | 保持住，请按快门 | Tap to shoot | シャッターを押してください |
 
-#### 11.1.7 归还后的挑图
+**拍摄完成致谢页（ClipCompletionView）**：
+- 画面展示绿色勾选动效，大字提示："已自动同步给对方，非常感谢您的帮助！"
+- **相册隐私保证**：明确标注"照片已安全传回对方手机，未保存在您的相册中"。
+- **友好增值入口**：
+  - [我也留存一张]（可选次级按钮：点击后将刚才拍的照片存入路人自己的相册，单次申请添加权限）；
+  - [了解帮拍相机]（底部轻量横幅：App Store 智能横幅，吸引路人下载完整主应用）。
 
-- 每张照片在拍摄时记录：对齐偏差、当时的构图 finding、是否处于 `ready`。
-- 排序：`ready` 状态拍的 > 偏差小的 > 偏差大的；有 critical 构图问题的排在最后。
-- 照片在挑图前只保存在 App 沙盒内，不进入相册（6.4）。
-- 前 3 张默认勾选为"推荐"；主人调整勾选后点"保存到相册"，只有勾选的照片存入相册，其余丢弃。这样只需要"仅添加"权限，也不会在相册里留下一堆废片。
-- 主人离开挑图页而没有保存时，弹出确认；App 被系统终止时，未处理的照片在下次启动时提示恢复（沙盒内保留 24 小时）。
-- 只做排序，不做人脸质量打分；智能挑帧（研究中的 F7）放在路线图。
+#### 11.1.9 单机交接模式（备选降级）
 
-#### 11.1.8 边界情况
+当遇到非 iPhone 路人、或双方无扫码条件时，系统提供一键切换到单机交接模式：
+- 主人点击"直接交接手机"，手机直接全屏进入锁定模式取景界面；
+- 界面隐藏相册入口、缩略图、设置菜单、变焦拨轮；
+- 退出需要**长按右上角 2 秒**或调用系统 `LocalAuthentication` 进行面容 ID 校验；
+- 界面提示主人："建议配合系统'引导式访问'使用，防误触主屏幕"。
 
-| 情况 | 处理 |
+#### 11.1.10 归还与成片挑选（主人端）
+
+- 主人手机无论通过 App Clip 收到回传成片，还是单机交接完毕退出锁定，均统一进入**挑图页（StrangerReviewView）**；
+- 自动按"是否在 ready 状态拍摄 > 对齐偏差分数 > 构图规则评分"进行综合质量排序，默认智能勾选前 3 张推荐照片；
+- 照片在主人确认前**暂存于 App 本地沙盒**，只有主人点击"保存到相册"后才通过 PhotoKit 写入系统相册，未选中的照片确认后直接清理丢弃，确保相册不被废片污染。
+
+#### 11.1.11 边界情况与容错
+
+| 异常情况 | 处理机制 |
 |---|---|
-| 陌生人把手机横过来 | 提示"请竖着拿"（或相反），配准暂停 |
-| 场景纹理太少（大片天空、海面） | 配准置信度低 → 只用 IMU 提示俯仰和歪斜，并在框外显示"对准参考画面即可" |
-| 光线和参考时差别很大（云遮住太阳） | 配准用灰度图并做直方图归一化；仍然失败时退化为只用 IMU |
-| 镜头自动切换（虚拟设备在近距离、低光时切换镜头） | 焦段按 `videoZoomFactor` 锁定，视场角不变；配准不受影响 |
-| 陌生人走得太远、画面完全不同 | 配准连续 2 秒失败 → 提示"请回到刚才的位置"，并显示参考画面的全屏预览 |
-| 锁屏扩展 | 不支持路人帮拍模式（扩展需要立即进入取景，没有设定步骤） |
+| 路人扫码后网络偶发丢包 | 成片上传采用并行多分块 + 自动重试机制；优先回传 30KB 快速预览缩略图，主人端界面立刻显示缩略图占位，全尺寸 HEIC 随后无缝刷新 |
+| 路人中途锁屏或退出 App Clip | 主人端界面等待 45 秒后提示"路人已断开连接"，支持一键刷新生成新码或切换为单机模式 |
+| 场景光线变化剧烈（如云遮太阳） | 图像配准采用直方图均衡化灰度图；若配准置信度持续过低（<0.5），平移箭头自动隐藏，退化为依靠 IMU 纯硬件提示水平与俯仰 |
+| 双方镜头比例不一致（4:3 vs 16:9） | App Clip 强制采用与主人端相同的 4:3 画幅与成片比例，多余区域留黑边，避免构图裁切失真 |
+| 会话安全超时 | 会话在创建 15 分钟后未完成自动失效，云端中继彻底销毁该 session 及其所有缓存数据 |
 
 ---
 
@@ -1610,6 +1706,7 @@ final class VoicePrompter {
 | 相机控制按键 | 取景页 | 用户在"设置 → 相机控制"里选择本 App |
 | 锁屏、控制中心、操作按钮 | 锁屏版取景页 | `LockedCameraCapture` 扩展 |
 | 深链接 | 取景页或路人帮拍设定页 | 见 12.1 |
+| **App Clip 扫码** | **路人极简帮拍界面** | **`CameraAppClip` 扩展 Target，见 12.3** |
 
 ### 12.1 深链接
 
@@ -1631,6 +1728,19 @@ final class VoicePrompter {
 - **天气**：主 App 把最近一次的光线摘要（位置网格、云量、天气状况、时间戳，约 200 字节）写入 `appContext`，扩展读取后用于光线规则【spike #6】。
 - **内存**：Vision 模型和掩码可能接近扩展的内存上限；超限时扩展只运行 A、B 类规则（姿态 + IMU），关闭实例掩码【spike #6】。
 
+### 12.3 App Clip 配置与唤起规范
+
+`CameraAppClip` 是面向陌生路人的免安装轻量 Target，旨在实现扫码 1 秒冷启动、零感知下载：
+
+| 配置项 | 规格与约定 |
+|---|---|
+| **Associated Domains** | 主 App 与 App Clip 的 Entitlements 中均配置 `appclips:camera-assist.app`；服务端部署 `/.well-known/apple-app-site-association` |
+| **URL 路由规则** | `https://camera-assist.app/clip?sid={session_uuid}&off={0|1}#k={base64_aes_key}`<br/>• `sid`：云端临时中继会话 ID（UUIDv4）<br/>• `off`：是否为离线 P2P 模式（1 = 启用 MultipeerConnectivity）<br/>• `#k`：端到端加密密钥（URL Fragment，不发送给云端） |
+| **码图形式** | **App Clip 码为主、标准二维码为辅**：主人手机屏幕居中展示苹果官方 App Clip Code（带有高辨识度圆环条码），四周留白 24pt；同时支持任何普通二维码扫描器识别 URL |
+| **包体积限制** | 严格执行 Apple 的 **15 MB 解压体积硬限制**；CI 流水线设置 `appclip-size-gate` 门禁（若 App Clip 二进制 > 8 MB 则报警，目前纯 Swift + Vision 架构预期仅 3~4 MB） |
+| **唤起卡片配置** | App Store Connect 中配置默认 App Clip 卡片：标题"帮拍相机 帮拍助手"，副标题"免安装拍同款构图"，操作按钮文案"打开" |
+| **升级引导** | 在致谢页底部集成系统原生 `SKOverlay` 推荐主应用，或配置 App Store 智能横幅，实现自然用户转化 |
+
 ---
 
 ## 13. UI / UX
@@ -1641,9 +1751,11 @@ final class VoicePrompter {
 |---|---|
 | 首页 | 今日光线卡片（当前光质、距离黄金时刻的倒计时、天气提示）；大按钮"开始帮拍"；"路人帮拍"入口 |
 | 取景页 | 见 13.2 |
-| 路人帮拍：设定页 | 在取景页上叠加站位框编辑、语言选择、自动连拍开关、"锁定构图"按钮（11.1.2） |
-| 路人帮拍：陌生人页 | 见 11.1.6 |
-| 路人帮拍：挑图页 | 本次照片网格，按对齐程度和构图问题排序，前 3 张默认勾选，"保存到相册"只保存勾选的照片（11.1.7） |
+| 路人帮拍：设定页 | 在取景页上叠加站位框编辑、语言选择、自动连拍开关、"生成帮拍码 / 单机帮拍"选择（11.1.2） |
+| **路人帮拍：帮拍码页** | 全屏高亮展示 App Clip 码 / 二维码、会话连接状态徽标（"等待路人扫码"、"路人已连接"、"正在拍摄"、"收到成片"） |
+| **路人帮拍：App Clip 取景页** | 见 11.1.8：半透明参考画面、红黄绿引导框、单一大箭头、超大快门按钮 |
+| **路人帮拍：App Clip 致谢页** | 见 11.1.8：成片同步成功动效、相册隐私提示、可选"我也存一张"、主 App 推荐 |
+| **路人帮拍：挑图页** | 本次照片网格（沙盒暂存），按对齐程度和构图问题排序，前 3 张默认勾选，"保存到相册"只保存勾选的照片（11.1.10） |
 | 拍后快速复核 | 拍完后底部浮出缩略图，带 ✓ 或问题标签；点击进入 Photos |
 | 设置 | 各类提示开关（构图 / 光线 / 距离）、自动曝光补偿开关、被拍者身高；语音（语速、只在戴耳机时播报、语音开启时关闭 Live Photo 录音）；路人帮拍（默认第二语言、默认自动连拍）；隐私说明、调试面板入口（仅开发版） |
 
@@ -1675,9 +1787,13 @@ final class VoicePrompter {
 - **触感反馈**：水平线变绿、问题解决、"可以拍"时各轻震一次（每次取景每条规则只震一次）。
 - **引导开关**：取景页左上角、相机控制按键菜单中都可以切换；关闭后只保留水平线和网格。
 - **语音**：默认关闭；首次连接 AirPods 进入取景页时询问一次是否开启（11.2.5）。
-- **路人帮拍**：首次进入时用 2 张卡片说明"先取好景并锁定 → 交给对方，绿框就拍"；陌生人模式中隐藏相册和设置入口，退出需要长按 2 秒或面容 ID。
+- **路人帮拍**：
+  - 扫码模式：展示清晰引导"请对方扫码帮拍"，双端通过轻快动效和提示音完成对齐与回传；
+  - 单机模式：首次进入时用 2 张卡片说明"先取好景并锁定 → 交给对方，绿框就拍"；陌生人模式中隐藏相册和设置入口，退出需要长按 2 秒或面容 ID。
 - **新手引导**：首次进入取景页，用 3 张卡片说明"看提示 → 照着做 → 看到 ✓ 就拍"。
-- **权限按需申请**：相机（进入取景页时）、位置（首次显示光线功能时，申请"使用期间 + 粗略位置"）、相册"仅添加"（第一次保存照片时）。
+- **权限按需申请**：
+  - 主 App：相机（进入取景页时）、位置（首次显示光线功能时，申请"使用期间 + 粗略位置"）、相册"仅添加"（第一次保存照片时）；
+  - 路人 App Clip：仅需相机权限（`NSCameraUsageDescription`），**默认不申请相册权限**（仅在路人主动点击"我也存一张"时单次申请相册添加权限）。
 - **无障碍**：提示文字支持动态字体；VoiceOver 播报主文案；颜色之外用图标区分状态（色弱用户）。
 
 ---
@@ -1686,12 +1802,14 @@ final class VoicePrompter {
 
 | 项目 | 措施 |
 |---|---|
-| 相机画面、人脸、人体数据 | **全部在本地处理，不上传**；不保存人脸特征 |
+| 相机画面、人脸、人体数据 | **全部在设备端本地处理，不上传**；不保存人脸生物特征 |
 | 位置 | "使用期间" + 粗略位置；天气请求前坐标四舍五入到 0.1°；文案："用于计算太阳方向和天气，不会上传精确位置" |
-| 相册 | 只申请"仅添加"权限：只写入本 App 拍的照片，不读取、不修改、不删除相册内容；路人帮拍的照片在挑选前只保存在 App 沙盒内，最长 24 小时 |
-| 埋点 | 只上报事件和数值（规则 id、耗时、修正与否），不上报图片、坐标 |
+| 相册 | 主 App 只申请"仅添加"权限：只写入本 App 拍的照片，不读取、不修改、不删除相册内容；路人帮拍照片在挑选前只保存在 App 沙盒内，最长 24 小时 |
+| **路人帮拍（App Clip 端）** | **零相册读取/写入权限**：拍完照片内存直传主人端，不残留路人相册；路人无需担心隐私泄露，主人无需交出手机 |
+| **跨机传输与云端中继** | **端到端加密（E2EE）**：AES-GCM-256 密钥随 URL Fragment 传递，云端中继仅盲转发加密流，零知识存储；会话 15 分钟 TTL 自毁，合规无存留 |
+| 埋点 | 只上报事件和数值（规则 id、耗时、修正与否、同步延迟），不上报图片、坐标 |
 | 调试包（.capturelog） | 只在开发版和内测版中生成，保存在本地，用户主动导出 |
-| 路人帮拍 | 参考帧只在内存中，退出模式即丢弃；陌生人模式隐藏相册入口；退出需要长按或面容 ID（`LocalAuthentication`）；提示主人可以开启系统"引导式访问" |
+| 路人帮拍（单机模式） | 参考帧只在内存中，退出模式即丢弃；陌生人模式隐藏相册入口；退出需要长按或面容 ID（`LocalAuthentication`）；提示主人可以开启系统"引导式访问" |
 | 语音播报 | 使用系统本地语音合成，不联网；不使用麦克风识别语音（Live Photo 录音是系统行为，与语音功能无关） |
 | App Store | 隐私标签：位置（粗略，不关联身份）、使用数据（分析）；相机、相册的用途说明文案 |
 | 中国大陆上架 | App 备案；隐私政策与个人信息保护法（PIPL）合规；人脸属于敏感个人信息，强调本地处理、不收集；WeatherKit 的数据出境问题未见 Apple 官方说明，国内版优先用境内天气服务【spike #12】 |
@@ -1730,6 +1848,7 @@ final class VoicePrompter {
 - 光向分类与 LightContext 融合：用表格驱动的测试覆盖第 7.9 节的融合规则。
 - 仲裁器：用脚本化的时间序列驱动，断言防抖、抢占、冷却、合并、静默、"可以拍"的行为。
 - 路人帮拍：`strangerCue` 的优先顺序和迟滞；状态机的全部转移（含配准失败、横竖拿反、退出验证）。
+- **跨机同步与加密（SyncKit）**：`ReferencePackage` 与 `CapturePackage` 的 Codable 序列化/反序列化；AES-GCM-256 加密与解密完整性；URL Fragment 中密钥编解码与防篡改；断网重连与指数退避重传。
 - 语音播报：用脚本化的仲裁输出序列驱动 `VoicePrompter`，断言间隔、重复次数、critical 打断、快门静默窗口、VoiceOver 开启时不播报。
 
 ### 16.2 离线评测（compose-eval-vision）
@@ -1762,6 +1881,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 逆光自动提亮 | 自动 vs 关闭，各 30 组盲测 | 人脸曝光评分显著更好，天空过曝没有明显增加 |
 | 路人帮拍：可用率 | 10 组情侣在景区真实请路人帮拍：一半用路人帮拍模式，一半直接交给系统相机；主人盲选 | 路人帮拍模式下"至少有 1 张可用"的比例 ≥ 80%，且明显高于对照组 |
 | 路人帮拍：对齐 | 不同场景（街道、海边、室内、人多）各 20 次手持对齐 | 从交接到首次绿框的中位时间 < 10 秒；绿框时与参考画面的实际偏差 < 5% |
+| **App Clip 扫码体验** | 30 次现场请陌生人扫码调起（含 iPhone 12 至 iPhone 16 各代机型） | **扫码调起成功率 ≥ 95%**；冷启动耗时中位值 < 1.0 秒；成片回传耗时中位值 < 2.0 秒 |
 | 语音播报 | 10 组帮拍者，语音开 vs 关，各拍 5 分钟 | 修正耗时更短，或者帮拍者主观评分更好；没有用户反馈"太吵" |
 
 ### 16.5 性能测试
@@ -1783,9 +1903,13 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | `auto_setting_applied` / `auto_setting_undone` | 设置类型、数值 | 自动设置的接受度 |
 | `quick_action_tapped` | 切焦段、补光、剪影、保留暖色 | 一键按钮的使用率 |
 | `deeplink_opened` | `src`、`mode`、`focus` | 照片复盘应用的导流效果；`focus` 规则在本次取景中的修正率 |
-| `stranger_locked` | 站位框数量、第二语言、是否自动连拍 | 路人帮拍的使用率 |
-| `stranger_first_ready` | 从交接到首次绿框的耗时 | 对齐引导的效率 |
-| `stranger_capture` | 是否处于 `ready`、对齐偏差、是否自动连拍 | 陌生人拍照的质量 |
+| `stranger_locked` | 模式（`clip` 扫码 / `single` 单机）、站位框数量、第二语言、是否自动连拍 | 路人帮拍的使用率与模式偏好 |
+| **`stranger_clip_opened`** | 会话 ID、路人设备机型、是否离线 P2P、从扫码到首帧取景耗时 | App Clip 调起成功率与启动性能 |
+| `stranger_first_ready` | 从扫码/交接到首次绿框的耗时 | 对齐引导的效率 |
+| `stranger_capture` | 模式（`clip` / `single`）、是否处于 `ready`、对齐偏差、是否自动连拍 | 陌生人拍照的质量 |
+| **`stranger_sync_completed`** | 成片数量、传输总字节数、端到端上传+下载总耗时、重试次数 | **跨机同步链路健康度与延迟** |
+| **`stranger_clip_save_copy`** | 是否点击自留一张 | 路人自留行为转化率 |
+| **`stranger_clip_app_store`** | 点击了解主 App / 安装 | App Clip 对主 App 的获客转化效率 |
 | `stranger_review` | 拍到的张数、推荐张数、主人保留张数、删除张数 | **路人帮拍的可用率** |
 | `voice_toggled` | 开 / 关、入口、是否连接耳机 | 语音的接受度 |
 | `voice_spoken` | 规则 id、是否为重复播报 | 播报频率（与 `hint_resolved` 关联，看修正耗时是否缩短） |
@@ -1816,7 +1940,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | **M2 构图规则** | W5–7 | `compose-core`（Rust）：分类器、A–D 类规则、Merger、仲裁器、Rust 单元测试、黄金测试向量（工程师 B + 照片复盘应用的 Rust 工程师）；`ComposeKit` 封装、文案生成、叠加层 UI（Swift） | Rust 单元测试与黄金向量全部通过，Swift 侧通过同一组黄金向量；手动走查流畅 |
 | **M3 评测与调参** | W6–9（与 M2 并行开始） | 数据集与标注、`compose-eval-vision`、`capture-replay`、CI 回归门禁、第一轮阈值调整（算法工程师） | A–D 类规则精确率 ≥ 85% |
 | **M4 光线与距离** | W8–10 | `compose-core`：太阳位置、LightContext 融合、`optics`、E–G 类规则、AutoSettingsPolicy（工程师 B + 照片复盘应用的 Rust 工程师）；Swift：天气、CameraSettingsApplier、一键按钮、绕位图示、距离测量（工程师 A） | 光向分类实地准确率 ≥ 85%；距离中位误差 < 15% |
-| **M5 入口与帮拍辅助** | W11–12 | 工程师 A：锁屏扩展、相机控制按键菜单、深链接（W11 前半）；语音播报 + 音频会话（W11 后半）；陌生人界面、设定页、挑图页（含沙盒暂存）（W12）。工程师 B：路人帮拍的参考帧、对齐估计、状态机、单元测试（W11–12） | spike #6 #18 #19 #20 #21 结论落地；路人帮拍在 3 类场景下完成手持对齐 |
+| **M5 入口与帮拍辅助** | W11–12 | 工程师 A：锁屏扩展、相机控制按键菜单、深链接（W11 前半）；语音播报 + 音频会话（W11 后半）；帮拍码展示页、挑图页（含沙盒暂存）、单机交接模式（W12）。工程师 B：路人帮拍参考帧生成、对齐估计、状态机；SyncKit 跨机 E2EE 通信模块；CameraAppClip 极简 Target 构建与包体积控制（W11–12） | spike #6 #18 #19 #20 #21 #23 #24 结论落地；App Clip 扫码冷启动 < 1s；双机端到端照片回传顺畅 |
 | **M6 实地与 Beta** | W13–16 | 两轮实地测试（各 2 个景区，含路人帮拍可用率测试）、性能和发热优化、埋点、隐私合规材料、TestFlight 外测 | 达到第 2.5 节的成功标准；外测崩溃率 < 0.5% |
 
 ### 18.3 关键路径
@@ -1824,6 +1948,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 - **可行性**：M0 的画质 spike（#1）、性能 spike（#5）、FFI 开销 spike（#22）决定整体方案是否成立。
 - **数据集**：M3 的标注周期较长，需要从 W5 开始组织。
 - **路人帮拍**：配准 spike（#18）在 M0 期间顺带做一个最小原型（约 2 天），尽早暴露"前景人物干扰配准"的风险。
+- **App Clip 与跨机同步**：M5 期间需要及早搭建轻量 E2EE 中继原型（spike #23 #24），确保真机扫码冷启动与成片传输延迟达标。
 - **与照片复盘应用的依赖**：M0 与其 P0 同一周开始；M2、M4 中的 Rust 规则由两边共同完成，任何一边延期都会影响另一边（`photo-review-app-plan.md` 第 14.3 节）。
 
 ---
@@ -1850,7 +1975,9 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 发热和耗电 | 分级降频；深度输出按需开启 |
 | 规则误报有意的创意构图 | 标注"创意构图"；提供"只保留基础提示"模式（只保留 A 类、B1、G 类） |
 | 路人帮拍：前景人物、纹理少的场景导致配准不稳 | 配准前遮掉人物区域；置信度低时退化为只用 IMU；配准连续失败时显示参考画面全屏预览 |
-| 路人帮拍：陌生人不按提示操作，或者拿着手机离开 | 界面只保留一个箭头和一个按钮；自动连拍兜底；隐私方面隐藏相册、退出需验证，并提示主人开启引导式访问 |
+| 路人帮拍：陌生人不按提示操作，或者拿着手机离开 | **优先使用 App Clip 扫码模式，路人使用自带手机，零交接安全无虞**；单机模式作为备选（隐藏相册、退出需长按/面容 ID，提示开启系统引导式访问） |
+| **App Clip 体积超限（>15MB）或启动慢** | **严格解耦，App Clip 零 Rust 依赖**，仅依赖系统内置 Vision 和 CoreMotion，体积控制在 3~4MB，CI 设置包体积拦截门禁 |
+| **景区弱网导致照片回传超时** | 缩略图优先推流秒级上屏，全尺寸 HEIC 并行分块上传；若完全无网络则自动降级为 MultipeerConnectivity 本地 P2P 直连 |
 | 语音播报：被录进 Live Photo，或者让人觉得吵 | 快门前后静默窗口；可选关闭 Live Photo 录音；只在戴耳机时播报选项；默认关闭 |
 | Rust 规则核心：iOS 团队的 Rust 学习成本，M2 进度受影响 | 照片复盘应用的 Rust 工程师主导 crate 结构和评审；`compose-core` 只用简单的数据结构和纯函数；第 8 节的 Swift 算法规格作为实现依据；M0 先用一条示例规则打通全链路 |
 | Rust 规则核心：UniFFI 尚未 1.0，升级可能有破坏性变化；每帧 FFI 调用开销 | 锁定版本，升级单独排期并跑全部黄金向量；每帧只跨一次边界（5.1.1）；spike #22 实测 |
@@ -1893,6 +2020,8 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 20 | 陌生人模式下退出验证（面容 ID）与引导式访问的配合；横竖拿反、来电打断后的恢复 | 真机 | 路人帮拍的隐私与稳定性 | M5 |
 | 21 | 延迟处理的代理照片暂存在 App 沙盒内：`fileDataRepresentation()` 按需处理的耗时；只保存部分照片时，其余代理照片能否直接丢弃；App 被终止后的恢复 | 真机 | 路人帮拍"先挑后存"能否实现 | M5 |
 | 22 | UniFFI 每帧调用 `compose-core` 的开销（含 `Frame` 类型转换，目标 < 1 ms）；Rust 对象在 Swift 6 严格并发下的 `Sendable` 处理；XCFramework 对 App 和锁屏扩展体积、内存的影响（与照片复盘应用 spike R9 合并进行） | 原型 + Instruments | Rust 规则核心在实时路径上是否可行 | M0 |
+| 23 | App Clip 独立 Target 体积控制（验证纯 Swift + Vision 下二进制打包尺寸 < 5 MB）与扫码冷启动延迟（目标 < 800 ms） | 真机实测与 CI 体积分析 | App Clip 即开即用体验与苹果体积限制合规 | M5 |
+| 24 | 跨机 E2EE 照片实时同步延迟与弱网并发优化（缩略图优先推流，全尺寸 HEIC 并行分块上传） | 弱网与限速环境真机实测 | 照片回传耗时与失败重试体验 | M5 |
 
 ---
 
@@ -1908,6 +2037,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 
 ## 22. 参考资料
 
+- [研发任务优先级与双项目协同规划（本仓库）](development-priorities.md)
 - [帮拍场景其他有效功能调研（本仓库）](helper-mode-features-research.md)
 - [Use Add Me to take group photos – Pixel Camera Help](https://pixel.withgoogle.com/Pixel_9_Pro/use-add-me-to-take-group-photos)
 - [5 features for taking perfect group photos with Pixel 10 – Google](https://blog.google/products-and-platforms/devices/pixel/pixel-group-photo-features-ai/)
@@ -2034,3 +2164,15 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 文案修正 | `tilt` 动作文案细化区分往下移（头顶空太多）与往上抬（头顶太挤） | 8.8 |
 | 配置补齐 | `Thresholds.json` 示例中补齐静态图 `still` 配置，与共享配置文件保持一致 | 8.7 |
 | 类型映射说明 | 明确 `MaskSummary.topColumns` 在 Rust UniFFI 侧为 `ColumnRange` 记录类型，在 Swift 封装层转为 `ClosedRange<CGFloat>` | 7.1 |
+
+### A.7 v1.6：引入 App Clip 扫码帮拍与跨设备自动同步
+
+| 类别 | 变更与演化 | 位置 |
+|---|---|---|
+| 文档命名 | 方案文档由通用的 `ios-app-development-plan.md` 重命名为产品级对应的 `camera-assist-app-plan.md`，与 `photo-review-app-plan.md` 形成命名对称 | 全局 |
+| 核心体验演进 | "路人帮拍"从原本单纯的"单机交接手机"模式，升级为**以"App Clip 扫码拍摄 + 自动回传"为主力、单机交接为备选的双模式架构**；彻底解决游客请陌生人帮拍时的财产安全与隐私心理焦虑 | 第 1、2、11.1 节 |
+| 架构解耦与体积门禁 | 新增 `CameraAppClip` 独立轻量 Target（解压体积严格 < 15 MB，实际仅 3~4 MB）；App Clip **零 Rust 依赖**，全量构图规则在主人端完成，App Clip 仅负责 Vision 图像配准与 IMU 对齐 | 第 1、5.1、12.3 节 |
+| 跨机安全通信 | 新增 `SyncKit` 共享组件；设计端到端加密（E2EE）临时会话通道（URL Fragment 传递 AES-256-GCM 密钥，云端中继零知识盲转发，会话 15 分钟 TTL 彻底自毁）；离线自动降级支持 MultipeerConnectivity | 第 5.1、11.1.4、11.1.5、14 节 |
+| 硬件自适应 | 针对主人与路人 iPhone 焦段/镜头不一致（Pro 多焦段 vs 标准版双摄），引入 FOV 自动归一化与数码裁切比例自适应 | 第 11.1.6 节 |
+| 隐私强化 | 路人端 App Clip **默认零相册权限**，成片内存直传主人端，不残留路人相册；提供可选"我也存一张"及轻量主 App 推荐入口 | 第 11.1.8、14 节 |
+| 评测与排期 | 新增 Spike #23（App Clip 体积与冷启动 < 800ms）与 Spike #24（E2EE 照片实时同步与弱网并发优化）；在 M5 里程碑中明确研发分工 | 第 16.4、17、18.2、20 节 |

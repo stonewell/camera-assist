@@ -12,11 +12,12 @@
 
 | 应用 | 定位与核心能力 | 目标平台 | 开发方案文档 |
 |---|---|---|---|
-| **帮拍相机 (CameraApp)** | **实时引导相机**：自建取景器 + 原生系统成像管线，提供实时构图提示、光线站位指引、安全自动曝光补偿、**路人帮拍模式**（锁定构图 + 对齐引导）以及**语音播报提示**。 | iOS 18+ (iPhone) | [帮拍相机 iOS App 开发方案 v1.5](ios-app-development-plan.md) |
+| **帮拍相机 (CameraApp)** | **实时引导相机**：自建取景器 + 原生系统成像管线，提供实时构图提示、光线站位指引、安全自动曝光补偿、**路人帮拍模式**（锁定构图 + 对齐引导）以及**语音播报提示**。 | iOS 18+ (iPhone) | [帮拍相机 iOS App 开发方案 v1.6](camera-assist-app-plan.md) |
 | **照片复盘 (ReviewApp)** | **事后构图体检与修复**：无论使用手机还是单反拍摄，拍完后均可进行构图体检、光线复盘，支持一键拉直与推荐裁切、生成旅行总结报告，并可通过深链接一键跳转帮拍相机重拍。 | iOS + 桌面端 (macOS / Windows / Linux) | [照片复盘应用开发方案 v1.3](photo-review-app-plan.md) |
 
-### 辅助调研与归档资料
+### 辅助调研、全局规划与归档资料
 
+- **任务优先级与协同**：[研发任务优先级与双项目协同规划](development-priorities.md) —— 制定了双应用 P0–P3 任务优先级、依赖关键路径图与排期对齐表。
 - **功能调研**：[帮拍场景其他有效功能调研](helper-mode-features-research.md) —— 调研了路人帮拍、表情口令卡、偏好卡、智能挑片、双机实时预览等竞品与用户痛点。
 - **归档文档**：[archive/](archive/) —— 包含合并重构前的三份早期技术规划：
   - [构图规则引擎 (`composition-rule-engine-ios.md`)](archive/composition-rule-engine-ios.md)
@@ -38,14 +39,16 @@ camera-assist/
 │  ├─ review-bridge/                  flutter_rust_bridge 绑定 → 供 Flutter 桌面端调用
 │  └─ compose-eval/                   Rust 命令行评测工具（ONNX 后端）
 ├─ apple/                             Apple 生态工程
-│  ├─ CameraApp/                      ★ 帮拍相机 iOS App（SwiftUI 外壳 + UIKit 取景页 + 锁屏扩展）
+│  ├─ CameraApp/                      ★ 帮拍相机 iOS 主应用（SwiftUI 外壳 + UIKit 取景页 + 锁屏扩展）
+│  ├─ CameraAppClip/                  ★ 路人帮拍 App Clip（免安装轻应用，< 5MB）
 │  ├─ ReviewApp/                      照片复盘 iOS 应用（SwiftUI + PhotoKit 非破坏性写回 + 分享扩展）
 │  ├─ Packages/
 │  │   ├─ ComposeKit/                 compose-ffi 上的 Swift 薄封装（值类型、Sendable，双 iOS 应用共用）
 │  │   ├─ PerceptionVision/           Vision 感知后端（双 iOS 应用共用）
 │  │   ├─ PerceptionKit/              实时感知调度、平滑、IMU、定位、天气（帮拍相机专有）
 │  │   ├─ CaptureKit/                 AVCaptureSession 管线、24MP 输出、相机控制控件（帮拍相机专有）
-│  │   └─ GuideKit/                   帮拍辅助：路人帮拍模式、语音播报（帮拍相机专有）
+│  │   ├─ GuideKit/                   帮拍辅助：路人帮拍模式、语音播报（帮拍相机专有）
+│  │   └─ SyncKit/                    ★ 跨机通信：E2EE 临时会话、AES-GCM-256 加解密（帮拍相机专有）
 │  └─ Tools/
 │      ├─ compose-eval-vision/        macOS 命令行离线评测工具（Vision 后端）
 │      └─ capture-replay/             真机录制数据回放工具

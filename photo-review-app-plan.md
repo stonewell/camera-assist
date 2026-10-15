@@ -1,7 +1,7 @@
 # 照片复盘应用开发方案 v1.3（iOS + 桌面端 macOS / Windows / Linux）
 
 > - **范围**：事后的照片复盘应用。**移动端只做 iOS（iPadOS 顺带支持）；桌面端跨平台，覆盖 macOS、Windows、Linux。**
-> - **关系**：从帮拍相机方案（`ios-app-development-plan.md`）中拆分出来；两者共用 Rust 规则核心 `compose-core`、阈值和文案。版本变化见附录 A。
+> - **关系**：从帮拍相机方案（`camera-assist-app-plan.md`）中拆分出来；两者共用 Rust 规则核心 `compose-core`、阈值和文案。全项目研发优先级与排期对齐见 `development-priorities.md`。版本变化见附录 A。
 > - **约定**：【待验证】表示需要 spike 确认（汇总在第 15 节）；尚未决定的事项汇总在第 2.3 节。文中代码为设计级示例，未经编译。
 
 ---
@@ -36,7 +36,7 @@
 
 **一句话**：不管用什么相机拍，回来都可以给照片做一次"构图体检"，一键修正能修的问题，并学会"下次这样拍"。
 
-| | 帮拍相机（`ios-app-development-plan.md`） | 照片复盘应用（本文档） |
+| | 帮拍相机（`camera-assist-app-plan.md`） | 照片复盘应用（本文档） |
 |---|---|---|
 | 时机 | 拍摄时实时引导 | 拍完之后 |
 | 平台 | iOS | iOS + macOS / Windows / Linux |
@@ -124,7 +124,7 @@ camera-assist/
 │  ├─ review-bridge/                     flutter_rust_bridge 绑定 → Dart（桌面端）
 │  └─ compose-eval/                      Rust 命令行离线评测（ONNX 后端，三个桌面系统通用）
 ├─ apple/
-│  ├─ CameraApp/                         帮拍相机（见 ios-app-development-plan.md）
+│  ├─ CameraApp/                         帮拍相机（见 camera-assist-app-plan.md）
 │  ├─ ReviewApp/                         照片复盘 iOS 应用
 │  ├─ Packages/
 │  │  ├─ ComposeKit/                     compose-ffi 的 Swift 封装（两个 iOS 应用共用）
@@ -172,7 +172,7 @@ camera-assist/
 
 ### 4.1 内容
 
-`compose-core` 是两个应用唯一的规则实现。规则定义、阈值、优先级以 `ios-app-development-plan.md` 第 7、8 节的算法规格为准；本应用在此基础上增加静态图专用的部分：
+`compose-core` 是两个应用唯一的规则实现。规则定义、阈值、优先级以 `camera-assist-app-plan.md` 第 7、8 节的算法规格为准；本应用在此基础上增加静态图专用的部分：
 
 | 模块 | 内容 | 规格来源 | 使用方 |
 |---|---|---|---|
@@ -824,7 +824,8 @@ compose-eval diff vision.json onnx.json
 
 ## 18. 参考资料
 
-- [帮拍相机 iOS 开发方案（本仓库）](ios-app-development-plan.md)
+- [研发任务优先级与双项目协同规划（本仓库）](development-priorities.md)
+- [帮拍相机 iOS 开发方案（本仓库）](camera-assist-app-plan.md)
 - [帮拍场景其他有效功能调研（本仓库）](helper-mode-features-research.md)
 - [Linux Graphics Issues – Tauri](https://v2.tauri.app/develop/debug/linux-graphics/)
 - [webkit-renderer-repaint-lag – xnmp/tauri-explorer #1057](https://github.com/xnmp/tauri-explorer/issues/1057)
