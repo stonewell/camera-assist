@@ -14,15 +14,22 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
     compose_kit_dir = repo_root / "apple" / "Packages" / "ComposeKit"
     sync_kit_dir = repo_root / "apple" / "Packages" / "SyncKit"
+    capture_kit_dir = repo_root / "apple" / "Packages" / "CaptureKit"
+    perception_kit_dir = repo_root / "apple" / "Packages" / "PerceptionKit"
+    camera_app_dir = repo_root / "apple" / "CameraApp"
     fixtures_dir = repo_root / "fixtures" / "golden"
 
     print("--- [validate-swift-parity] Checking Swift Package Declarations ---")
 
     # 1. Check Package manifests
-    compose_pkg = compose_kit_dir / "Package.swift"
-    sync_pkg = sync_kit_dir / "Package.swift"
+    packages = [
+        compose_kit_dir / "Package.swift",
+        sync_kit_dir / "Package.swift",
+        capture_kit_dir / "Package.swift",
+        perception_kit_dir / "Package.swift"
+    ]
 
-    for pkg in [compose_pkg, sync_pkg]:
+    for pkg in packages:
         if not pkg.is_file():
             print(f"[FAIL] Missing Package.swift at {pkg}", file=sys.stderr)
             return 1
@@ -42,17 +49,70 @@ def main() -> int:
             return 1
         print(f"  ✓ Found UniFFI artifact: {f} ({fp.stat().st_size} bytes)")
 
-    # 3. Check Swift source models and actor
+    # 3. Check ComposeKit Swift source models and actor
     sources_dir = compose_kit_dir / "Sources" / "ComposeKit"
     required_src = ["LiveComposer.swift", "Models.swift"]
     for f in required_src:
         fp = sources_dir / f
         if not fp.is_file():
-            print(f"[FAIL] Missing Swift source file: {fp}", file=sys.stderr)
+            print(f"[FAIL] Missing ComposeKit source file: {fp}", file=sys.stderr)
             return 1
         print(f"  ✓ Found source file: {f}")
 
-    # 4. Check Swift Tests
+    # 4. Check CaptureKit sources and tests
+    print("--- [validate-swift-parity] Checking CaptureKit & PerceptionKit Components ---")
+    capture_src = capture_kit_dir / "Sources" / "CaptureKit"
+    capture_files = [
+        "CaptureConfiguration.swift",
+        "CaptureSessionManager.swift",
+        "CapturePhotoController.swift",
+        "RotationCoordinatorBridge.swift",
+        "VisionOrientationMapper.swift"
+    ]
+    for f in capture_files:
+        fp = capture_src / f
+        if not fp.is_file():
+            print(f"[FAIL] Missing CaptureKit source file: {fp}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Found CaptureKit source: {f}")
+
+    capture_test_file = capture_kit_dir / "Tests" / "CaptureKitTests" / "CaptureKitTests.swift"
+    if not capture_test_file.is_file():
+        print(f"[FAIL] Missing CaptureKit test file: {capture_test_file}", file=sys.stderr)
+        return 1
+    print("  ✓ Found CaptureKit test suite: CaptureKitTests.swift")
+
+    # 5. Check PerceptionKit sources and tests
+    perception_src = perception_kit_dir / "Sources" / "PerceptionKit"
+    perception_files = [
+        perception_src / "Pipeline" / "PerceptionModels.swift",
+        perception_src / "Pipeline" / "FrameSyncHub.swift",
+        perception_src / "Motion" / "OneEuroFilter.swift",
+        perception_src / "Motion" / "AttitudeTracker.swift",
+        perception_src / "Vision" / "BodyPoseAnalyzer.swift",
+        perception_src / "Vision" / "MaskSummarizer.swift",
+        perception_src / "Vision" / "SubjectTracker.swift"
+    ]
+    for fp in perception_files:
+        if not fp.is_file():
+            print(f"[FAIL] Missing PerceptionKit source file: {fp}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Found PerceptionKit source: {fp.name}")
+
+    perception_test_file = perception_kit_dir / "Tests" / "PerceptionKitTests" / "PerceptionKitTests.swift"
+    if not perception_test_file.is_file():
+        print(f"[FAIL] Missing PerceptionKit test file: {perception_test_file}", file=sys.stderr)
+        return 1
+    print("  ✓ Found PerceptionKit test suite: PerceptionKitTests.swift")
+
+    # 6. Check Perception Debug HUD
+    debug_hud_file = camera_app_dir / "CameraFeature" / "PerceptionDebugHUD.swift"
+    if not debug_hud_file.is_file():
+        print(f"[FAIL] Missing PerceptionDebugHUD file: {debug_hud_file}", file=sys.stderr)
+        return 1
+    print(f"  ✓ Found CameraApp UI component: {debug_hud_file.name}")
+
+    # 7. Check ComposeKit Tests
     tests_dir = compose_kit_dir / "Tests" / "ComposeKitTests"
     required_tests = ["GoldenVectorTests.swift", "ConcurrencyTests.swift"]
     for f in required_tests:
@@ -62,7 +122,7 @@ def main() -> int:
             return 1
         print(f"  ✓ Found test file: {f}")
 
-    # 5. Check Golden Vectors integrity against Swift definitions
+    # 8. Check Golden Vectors integrity against Swift definitions
     print("--- [validate-swift-parity] Checking Golden Vector Coverage ---")
     golden_files = list(fixtures_dir.glob("*.json"))
     golden_vectors = [f for f in golden_files if f.name != "schema.json"]
@@ -88,3 +148,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

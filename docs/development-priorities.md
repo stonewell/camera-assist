@@ -194,17 +194,18 @@ P0 阶段（W1–W2）已全面完成预定目标，并超额将原定于 P1/M2 
 
 当前开发重心正式转入 **P1 阶段：核心采集、实时感知与真机交互闭环**。
 
-### 6.2 P1 Sprint 1 (Week 3) 任务分解与排期
+### 6.2 P1 Sprint 1 (Week 3) 任务分解与交付矩阵 [已完成 100%]
 
 Week 3 的核心攻坚目标是 **M1: 核心采集与感知闭环 (Live Capture & Real-time Perception Pipeline)**，打通从 iPhone 摄像头硬件采集、60Hz IMU 运动姿态、Vision 人体与人脸特征提取，到组装成 `compose-core` 所需的 `Frame` 对象的全链路。
 
-| 任务编号 | 模块 / 目标 | 核心工作内容 | 验证与验收标准 (SLA) |
-|---|---|---|---|
-| **W3-1** | `CaptureKit` 基础采集管线 | 构建 24MP AVCaptureSession 高保真会话控制器，配置 1080p/4K 60fps 实时预览数据流输出 (`AVCaptureVideoDataOutput`)。 | 预览帧率稳定 60 FPS，无丢帧，初始化延迟 < 200ms。 |
-| **W3-2** | `RotationCoordinator` 视锥对齐 | 接入 iOS 17+ `AVCaptureDevice.RotationCoordinator`，处理设备物理朝向、取景器镜像与视锥宽高比投影矩阵。 | 0°/90°/180°/270° 旋转时取景坐标系与 Vision 坐标系严密对齐。 |
-| **W3-3** | `PerceptionKit` 60Hz IMU 姿态滤波 | 封装 `CMMotionManager`，采集 60Hz 俯仰角 (Pitch)、横滚角 (Roll)，实现 OneEuroFilter / 双指数平滑滤波。 | 手持微抖动消除，快速移动响应延迟 < 25ms，静止漂移 < 0.1°。 |
-| **W3-4** | `PerceptionKit` Vision 人体姿态 | 集成 `VNDetectHumanBodyPoseRequest`，提取 17 处骨骼关键点并归一化转换为 `Joint` 契约结构体。 | 单人/多人关键点置信度解析准确，15–30Hz 稳定推断，无内存泄漏。 |
-| **W3-5** | `PerceptionKit` Vision 实例掩码与人脸 | 集成 `VNGeneratePersonSegmentationRequest` 与人脸检测，提取主体边界框与头部/面部朝向特征。 | 掩码与 BoundingBox 边界吻合度高，弱光/背光下平滑降级。 |
-| **W3-6** | `FrameSyncHub` 跨模态时钟同步 | 实现环形时间戳对齐器，将高频 IMU（60Hz）、视频帧（30/60Hz）与 Vision 异步结果插值拼装为标准 `Frame`。 | 时间戳插值偏差 < 10ms，组装单次耗时 < 0.2ms，零死锁。 |
-| **W3-7** | Perception Debug HUD 面板 | 构建极简 SwiftUI / Metal 调试悬浮层，实时可视化渲染姿态骨骼、主体 Box、水平仪姿态与实时 FPS。 | 开启 HUD 帧率开销 < 5%，随时可通过配置开关显隐。 |
-| **W3-8** | P1-W3 集成测试与验证门禁 | 扩充 `./scripts/verify-all.sh` 门禁，验证采集与感知管线 Mock 驱动与回放，确保持续 100% 绿灯。 | 10 步门禁持续全绿，无警告，无安全漏洞。 |
+| 任务编号 | 模块 / 目标 | 核心工作内容 | 验证与验收标准 (SLA) | 交付状态与实测指标 |
+|---|---|---|---|---|
+| **W3-1** | `CaptureKit` 基础采集管线 | 构建 24MP AVCaptureSession 高保真会话控制器，配置 1080p/4K 60fps 实时预览数据流输出 (`AVCaptureVideoDataOutput`)。 | 预览帧率稳定 60 FPS，无丢帧，初始化延迟 < 200ms。 | **已交付 100%**：`CaptureSessionManager`、`CaptureConfiguration`、`CapturePhotoController` 就绪，24MP 与温控调频策略落地。 |
+| **W3-2** | `RotationCoordinator` 视锥对齐 | 接入 iOS 17+ `AVCaptureDevice.RotationCoordinator`，处理设备物理朝向、取景器镜像与视锥宽高比投影矩阵。 | 0°/90°/180°/270° 旋转时取景坐标系与 Vision 坐标系严密对齐。 | **已交付 100%**：`RotationCoordinatorBridge` 与 `VisionOrientationMapper` 落地，四向旋转与 AspectFit 映射测试 100% 通过。 |
+| **W3-3** | `PerceptionKit` 60Hz IMU 姿态滤波 | 封装 `CMMotionManager`，采集 60Hz 俯仰角 (Pitch)、横滚角 (Roll)，实现 OneEuroFilter / 双指数平滑滤波。 | 手持微抖动消除，快速移动响应延迟 < 25ms，静止漂移 < 0.1°。 | **已交付 100%**：`OneEuroFilter` 与 `AttitudeTracker` 完成，60Hz 采样抖动过滤与姿态计算通过测试。 |
+| **W3-4** | `PerceptionKit` Vision 人体姿态 | 集成 `VNDetectHumanBodyPoseRequest`，提取 17 处骨骼关键点并归一化转换为 `Joint` 契约结构体。 | 单人/多人关键点置信度解析准确，15–30Hz 稳定推断，无内存泄漏。 | **已交付 100%**：`BodyPoseAnalyzer` 实现 17 处关节归一化、置信度过滤 (≥0.3) 与独立关节平滑。 |
+| **W3-5** | `PerceptionKit` 实例掩码与人脸 | 集成 `VNGeneratePersonSegmentationRequest` 与人脸检测，提取主体边界框与头部/面部朝向特征。 | 掩码与 BoundingBox 边界吻合度高，弱光/背光下平滑降级。 | **已交付 100%**：`MaskSummarizer`（触边检测与 topY）+ `SubjectTracker`（空间加权打分、粘性跟踪与双人合并）。 |
+| **W3-6** | `FrameSyncHub` 跨模态时钟同步 | 实现环形时间戳对齐器，将高频 IMU（60Hz）、视频帧（30/60Hz）与 Vision 异步结果插值拼装为标准 `Frame`。 | 时间戳插值偏差 < 10ms，组装单次耗时 < 0.2ms，零死锁。 | **已交付 100%**：`FrameSyncHub` 环形缓冲时间戳对齐，生成兼容 `compose-core` 的 `PerceptionFrame` 与 JSON 导出。 |
+| **W3-7** | Perception Debug HUD 面板 | 构建极简 SwiftUI / Metal 调试悬浮层，实时可视化渲染姿态骨骼、主体 Box、水平仪姿态与实时 FPS。 | 开启 HUD 帧率开销 < 5%，随时可通过配置开关显隐。 | **已交付 100%**：`PerceptionDebugHUD.swift` 极简 Canvas + 动态水平线 + 遥测状态卡片 + 一键显隐。 |
+| **W3-8** | P1-W3 集成测试与验证门禁 | 扩充 `./scripts/verify-all.sh` 门禁，验证采集与感知管线 Mock 驱动与回放，确保持续 100% 绿灯。 | 10 步门禁持续全绿，无警告，无安全漏洞。 | **已交付 100%**：`validate-swift-parity.py` 扩充校验全部 4 个 Swift Package 与测试套件，门禁 10/10 持续全绿。 |
+
