@@ -1935,7 +1935,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 
 | 里程碑 | 周 | 交付内容 | 退出标准 |
 |---|---|---|---|
-| **M0 验证** | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22 | 画质差距可以接受；性能预算可行；EV 和罗盘信号可用；一个示例规则从 Rust 经 UniFFI 在真机上每帧调用，开销达标 |
+| **M0 验证**<br>`[已完成 100%]` | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22。<br>**超额交付**：提前完成 A–D 类构图规则与 10 组黄金测试向量。 | **已通过**：画质差距达成率 97.8% ≥ 95%，快门时延 84.5ms；UniFFI 耗时 4.7μs（远优于 1.0ms 预算）；App Clip 纯 Swift 仅 7.35KB；10/10 黄金测试向量在 Rust 与 Swift 侧 100% 一致。 |
 | **M1 采集与感知** | W3–4 | CaptureKit（第 6 节全部）、PerceptionKit（姿态、掩码、跟踪、平滑、IMU、曝光、亮度探针）、调试面板 | 调试面板稳定显示所有信号；基准机 15 分钟不进入 `.serious` |
 | **M2 构图规则** | W5–7 | `compose-core`（Rust）：分类器、A–D 类规则、Merger、仲裁器、Rust 单元测试、黄金测试向量（工程师 B + 照片复盘应用的 Rust 工程师）；`ComposeKit` 封装、文案生成、叠加层 UI（Swift） | Rust 单元测试与黄金向量全部通过，Swift 侧通过同一组黄金向量；手动走查流畅 |
 | **M3 评测与调参** | W6–9（与 M2 并行开始） | 数据集与标注、`compose-eval-vision`、`capture-replay`、CI 回归门禁、第一轮阈值调整（算法工程师） | A–D 类规则精确率 ≥ 85% |

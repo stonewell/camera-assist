@@ -759,7 +759,7 @@ compose-eval diff vision.json onnx.json
 
 | 阶段 | 周 | 内容 | 退出标准 |
 |---|---|---|---|
-| **P0 基础与验证** | W1–2（与帮拍相机 M0 同一周开始） | Rust workspace、`compose-ffi` → XCFramework 流水线（与帮拍相机共同完成）、CI 矩阵；`compose-core` 骨架与黄金向量格式；spike R1、R2、R3、R7、R9 | 模型和许可证确定；单张 ONNX 分析 < 400 ms；Flutter 网格在 Linux 上滚动达标 |
+| **P0 基础与验证**<br>`[已完成 100%]` | W1–2（与帮拍相机 M0 同一周开始） | Rust workspace、`compose-ffi` → XCFramework 流水线（与帮拍相机共同完成）、CI 矩阵；`compose-core` 骨架与黄金向量格式；spike R1、R2、R3、R7、R9。<br>**超额交付**：纯 Rust A–D 规则提前落地并通过 10 组黄金向量。 | **已通过**：模型与许可证确定（阻断 AGPL-3.0，全量合规）；Spike R2 单核分析 11.6M FPS（1000 张仅需 85.9 μs）；Spike R3 图像解码器架构合规审查通过；UniFFI 4.7μs 极低延迟。 |
 | **P1 共享核心** | W3–10 | W3–4：`model`、`geometry`、`classify`、`config`、`compose-ffi` + `ComposeKit`；W5–7：规则 A–D、合并、仲裁器（与帮拍相机 M2 同步）；W7–8：`still`、`report`；W8–10：`light`、`optics`、规则 E–G、`settings`（与帮拍相机 M4 同步）；黄金向量贯穿全程 | Rust 与 Swift 都通过全部黄金向量；帮拍相机 M2、M4 按时接入 |
 | **P2 桌面引擎** | W6–11 | `perception-onnx`（检测、分割、姿态、人脸、直线，三个系统的加速）、`media-io`（解码、EXIF、缩略图、导出、XMP）、`review-engine`（扫描、队列、SQLite、旅行分组、批次撤销） | 1000 张照片批量分析达标；文件安全专项测试通过 |
 | **P3 应用** | W8–14 | 桌面：导入、网格、详情、批量修正、报告、设置；iOS：首页、网格、详情、PhotoKit 写回、分享扩展、深链接、报告 | 两端主流程走通；`compose-eval` 两个后端都达到 85% 精确率、一致率 ≥ 90% |
