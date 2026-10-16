@@ -37,28 +37,37 @@ final class PerceptionKitTests: XCTestCase {
         let posture = tracker.process(reading: reading)
         XCTAssertEqual(posture.roll_deg, 5.0, accuracy: 0.2)
         XCTAssertEqual(posture.pitch_deg, 0.0, accuracy: 0.2)
+        XCTAssertFalse(posture.is_flatish)
     }
 
-    func testBodyPoseAnalyzerNormalization() {
+    func testBodyPoseAnalyzerNormalizationAndNeckSynthesis() {
         let analyzer = BodyPoseAnalyzer(minConfidence: 0.3)
         let rawKeypoints: [String: (point: CGPoint, confidence: Float)] = [
             "nose": (point: CGPoint(x: 0.5, y: 0.8), confidence: 0.95), // Vision bottom-left: y=0.8 is near top
+            "lShoulder": (point: CGPoint(x: 0.4, y: 0.7), confidence: 0.90),
+            "rShoulder": (point: CGPoint(x: 0.6, y: 0.7), confidence: 0.90),
             "lAnkle": (point: CGPoint(x: 0.4, y: 0.1), confidence: 0.85),
-            "rWrist": (point: CGPoint(x: 0.7, y: 0.5), confidence: 0.15) // Below threshold -> should be filtered
+            "rWrist": (point: CGPoint(x: 0.7, y: 0.5), confidence: 0.15) // Below threshold -> filtered
         ]
 
         let joints = analyzer.processKeypoints(rawKeypoints, timestamp: 1.0)
-        XCTAssertEqual(joints.count, 2)
-        XCTAssertNil(joints["rWrist"])
+        XCTAssertNil(joints["RightWrist"])
+        XCTAssertNotNil(joints["Nose"])
+        XCTAssertNotNil(joints["Neck"]) // Synthesized from LeftShoulder + RightShoulder
 
         // Nose in Vision (x=0.5, y=0.8) -> top-left UI should have y = 1.0 - 0.8 = 0.2
-        let nose = joints["nose"]!
-        XCTAssertEqual(nose.x, 0.5, accuracy: 0.01)
-        XCTAssertEqual(nose.y, 0.2, accuracy: 0.01)
+        let nose = joints["Nose"]!
+        XCTAssertEqual(nose.joint_type, .Nose)
+        XCTAssertEqual(nose.point.x, 0.5, accuracy: 0.01)
+        XCTAssertEqual(nose.point.y, 0.2, accuracy: 0.01)
         XCTAssertEqual(nose.confidence, 0.95, accuracy: 0.001)
+
+        let neck = joints["Neck"]!
+        XCTAssertEqual(neck.point.x, 0.5, accuracy: 0.01)
+        XCTAssertEqual(neck.point.y, 0.3, accuracy: 0.01)
     }
 
-    func testMaskSummarizerTouchDetection() {
+    func testMaskSummarizerTouchAndGridScanner() {
         let bbox = NormalizedBox(min_x: 0.005, min_y: 0.01, max_x: 0.8, max_y: 0.99)
         let summary = MaskSummarizer.summarize(bbox: bbox)
 
@@ -66,6 +75,36 @@ final class PerceptionKitTests: XCTestCase {
         XCTAssertTrue(summary.touches_left)
         XCTAssertTrue(summary.touches_bottom)
         XCTAssertFalse(summary.touches_right)
+
+        // Test 128x96 downsampled segmentation grid scanner
+        let w = 128, h = 96
+        var grid = [UInt8](repeating: 0, count: w * h)
+        for r in 10..<85 {
+            for c in 40..<88 {
+                grid[r * w + c] = 255
+            }
+        }
+        let gridSummary = MaskSummarizer.summarizeMaskGrid(grid: grid, width: w, height: h)
+        XCTAssertNotNil(gridSummary)
+        XCTAssertEqual(gridSummary!.head_cols.count, 2)
+        XCTAssertFalse(gridSummary!.touches_top)
+    }
+
+    func testPerceptionSchedulerMultiRateAndLuma() {
+        let scheduler = PerceptionScheduler()
+        let first = scheduler.schedule(at: 1.0, thermalState: .nominal, lastPoseHadSubject: false)
+        XCTAssertTrue(first.runBodyPose)
+        XCTAssertTrue(first.runSegmentationMask)
+        XCTAssertTrue(first.runFaceFallback)
+        XCTAssertTrue(first.runLumaProbe)
+
+        let immediate = scheduler.schedule(at: 1.01, thermalState: .nominal, lastPoseHadSubject: true)
+        XCTAssertFalse(immediate.runBodyPose)
+        XCTAssertFalse(immediate.runSegmentationMask)
+
+        let critical = scheduler.schedule(at: 2.0, thermalState: .critical, lastPoseHadSubject: true)
+        XCTAssertTrue(critical.runBodyPose)
+        XCTAssertFalse(critical.runSegmentationMask)
     }
 
     func testSubjectTrackerIoUAndGroupMerging() {
@@ -95,12 +134,16 @@ final class PerceptionKitTests: XCTestCase {
         hub.pushMotion(MotionReading(timestamp: 10.016, gravityX: 0.05, gravityY: -0.998, gravityZ: 0.0))
         hub.pushMotion(MotionReading(timestamp: 10.033, gravityX: 0.05, gravityY: -0.998, gravityZ: 0.0))
 
-        // Push detected subjects
+        // Push detected subjects using canonical schema
         let s1 = Subject(
-            id: "person_1",
-            bbox: NormalizedBox(min_x: 0.25, min_y: 0.15, max_x: 0.75, max_y: 0.85),
-            joints: ["nose": Joint(x: 0.5, y: 0.2, confidence: 0.9)],
-            mask: MaskSummary(top_y: 0.15)
+            id: 1,
+            bounds: NormalizedBox(min_x: 0.25, min_y: 0.15, max_x: 0.75, max_y: 0.85),
+            joints: ["Nose": Joint(joint_type: .Nose, x: 0.5, y: 0.2, confidence: 0.9)],
+            facing: "Frontal",
+            shot_type: "FullBody",
+            confidence: 0.98,
+            is_group: false,
+            mask_summary: MaskSummary(top_y: 0.15)
         )
         hub.updateSubjects([s1])
 
@@ -110,10 +153,16 @@ final class PerceptionKitTests: XCTestCase {
         XCTAssertEqual(frame.subjects.count, 1)
         XCTAssertEqual(frame.primary_subject_index, 0)
 
-        // Serialize to JSON and verify conformance to compose-core schema
+        // Serialize to JSON and verify exact conformance to compose-core schema
         let jsonStr = try frame.toJSONString()
         XCTAssertTrue(jsonStr.contains("\"roll_deg\""))
         XCTAssertTrue(jsonStr.contains("\"pitch_deg\""))
+        XCTAssertTrue(jsonStr.contains("\"angular_speed\""))
+        XCTAssertTrue(jsonStr.contains("\"is_flatish\""))
+        XCTAssertTrue(jsonStr.contains("\"bounds\""))
+        XCTAssertTrue(jsonStr.contains("\"joint_type\""))
+        XCTAssertTrue(jsonStr.contains("\"point\""))
+        XCTAssertTrue(jsonStr.contains("\"mask_summary\""))
         XCTAssertTrue(jsonStr.contains("\"subjects\""))
         XCTAssertTrue(jsonStr.contains("\"camera\""))
         XCTAssertTrue(jsonStr.contains("\"exposure\""))

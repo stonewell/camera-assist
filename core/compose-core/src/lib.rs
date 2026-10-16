@@ -3,13 +3,19 @@
 //! This crate is strictly platform-independent and `#![forbid(unsafe_code)]`.
 #![forbid(unsafe_code)]
 
+pub mod arbiter;
+pub mod classify;
 pub mod config;
 pub mod hint;
+pub mod merger;
 pub mod model;
 pub mod rules;
 
+pub use arbiter::*;
+pub use classify::*;
 pub use config::*;
 pub use hint::*;
+pub use merger::*;
 pub use model::*;
 pub use rules::*;
 

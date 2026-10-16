@@ -186,26 +186,41 @@ graph TD
 
 ---
 
-## 6. 最新推进状态与 P1 阶段工作计划 (Refreshed Sprint Plan: P1 Sprint 1 - Week 3)
+## 6. 最新推进状态与 P1 阶段工作计划 (Refreshed Sprint Plan: P1 Sprint 1 Completed -> Sprint 2 Week 4)
 
-### 6.1 阶段里程碑转移与成果总结
+### 6.1 阶段里程碑转移与深度加固总结
 
-P0 阶段（W1–W2）已全面完成预定目标，并超额将原定于 P1/M2 的 **A–D 类构图规则（水平倾斜、画幅裁切、主体位置与留白、双人/多人遮挡平衡）** 与 **10 组黄金测试向量** 提前在 `compose-core` 与 `ComposeKit` 中高质量闭环。
-
-当前开发重心正式转入 **P1 阶段：核心采集、实时感知与真机交互闭环**。
+P0 阶段（W1–W2）与 P1 Sprint 1（W3）已全面完成，并在架构审查后完成了 **M1 + M2 全量规格加固**：
+- **跨语言数据契约 100% 对齐**：`PerceptionKit` (`PerceptionModels.swift`) 与 `compose-core` (`Frame`、`Subject`、`Joint`、`JointType` 19 骨骼点含 `Neck`/`Root`、`NormalizedRect`、`MaskSummary` 三段列跨度、`Posture` 含 `angular_speed`/`is_flatish`) 实现字节级 JSON 序列化一致，并由 `validate-swift-parity.py` 自动化校验。
+- **`compose-core` M2 全量算法闭环**：
+  - `classify.rs`：实现 `facing_yaw`、`classify_facing` 与带时间迟滞（`switch_hold = 0.4s`、`ankle_lost_hold = 0.5s`）的 `ShotClassifierState`。
+  - A–D 类全套规则：`TiltRule`（含平拍 `is_flatish` 豁免与退出迟滞）、`PitchRule`、`HeadCropRule`（掩码顶带与头区重叠校验 + 鼻颈几何回退）、`JointCropRule`（3 关节肢体链线段与画幅求交 + 缺失末端关节外推）、`FeetFloatingRule`（`feet.floating`）、`PlacementRule`、`HeadroomRule`、`LeadRoomRule`（`placement.lead_room`）、`ScaleRule`（`placement.scale`）、`EdgeCrowdRule`（`edge.crowd`）及多人规则。
+  - `merger.rs` (`Merger`)：实现 `feet.floating` + `tilt.vertical` 合并为 `combo.lower_vertical`、重复后退动作去重与统一优先级排序。
+  - `arbiter.rs` (`HintArbiter`)：实现 7 大防抖机制（按严重度分级 `enterDelay`、`exitHold`、`minShow`、`ignoreAfter` + `snoozeFor`、`motionMute`、`goodHold`、`focus_rule` 提权），并在 `compose-ffi` 的 `LiveEngine` 中完整接入。
+  - 黄金测试向量扩充至 **13 组 (`001`–`013`)**，100% 通过。
 
 ### 6.2 P1 Sprint 1 (Week 3) 任务分解与交付矩阵 [已完成 100%]
 
-Week 3 的核心攻坚目标是 **M1: 核心采集与感知闭环 (Live Capture & Real-time Perception Pipeline)**，打通从 iPhone 摄像头硬件采集、60Hz IMU 运动姿态、Vision 人体与人脸特征提取，到组装成 `compose-core` 所需的 `Frame` 对象的全链路。
-
 | 任务编号 | 模块 / 目标 | 核心工作内容 | 验证与验收标准 (SLA) | 交付状态与实测指标 |
 |---|---|---|---|---|
-| **W3-1** | `CaptureKit` 基础采集管线 | 构建 24MP AVCaptureSession 高保真会话控制器，配置 1080p/4K 60fps 实时预览数据流输出 (`AVCaptureVideoDataOutput`)。 | 预览帧率稳定 60 FPS，无丢帧，初始化延迟 < 200ms。 | **已交付 100%**：`CaptureSessionManager`、`CaptureConfiguration`、`CapturePhotoController` 就绪，24MP 与温控调频策略落地。 |
+| **W3-1** | `CaptureKit` 24MP 采集管线 | 构建 24MP `AVCaptureSession` 高保真会话控制器，配置 `maxPhotoDimensions`、`setPreparedPhotoSettingsArray`、iOS 18 Camera Control 滑块、点击对焦/测光、PhotoKit 与沙盒双路落盘。 | 预览帧率稳定 60 FPS，无丢帧，初始化延迟 < 200ms。 | **已交付 100%**：`CaptureSessionManager`、`CaptureConfiguration`、`CapturePhotoController` 完整落地。 |
 | **W3-2** | `RotationCoordinator` 视锥对齐 | 接入 iOS 17+ `AVCaptureDevice.RotationCoordinator`，处理设备物理朝向、取景器镜像与视锥宽高比投影矩阵。 | 0°/90°/180°/270° 旋转时取景坐标系与 Vision 坐标系严密对齐。 | **已交付 100%**：`RotationCoordinatorBridge` 与 `VisionOrientationMapper` 落地，四向旋转与 AspectFit 映射测试 100% 通过。 |
-| **W3-3** | `PerceptionKit` 60Hz IMU 姿态滤波 | 封装 `CMMotionManager`，采集 60Hz 俯仰角 (Pitch)、横滚角 (Roll)，实现 OneEuroFilter / 双指数平滑滤波。 | 手持微抖动消除，快速移动响应延迟 < 25ms，静止漂移 < 0.1°。 | **已交付 100%**：`OneEuroFilter` 与 `AttitudeTracker` 完成，60Hz 采样抖动过滤与姿态计算通过测试。 |
-| **W3-4** | `PerceptionKit` Vision 人体姿态 | 集成 `VNDetectHumanBodyPoseRequest`，提取 17 处骨骼关键点并归一化转换为 `Joint` 契约结构体。 | 单人/多人关键点置信度解析准确，15–30Hz 稳定推断，无内存泄漏。 | **已交付 100%**：`BodyPoseAnalyzer` 实现 17 处关节归一化、置信度过滤 (≥0.3) 与独立关节平滑。 |
-| **W3-5** | `PerceptionKit` 实例掩码与人脸 | 集成 `VNGeneratePersonSegmentationRequest` 与人脸检测，提取主体边界框与头部/面部朝向特征。 | 掩码与 BoundingBox 边界吻合度高，弱光/背光下平滑降级。 | **已交付 100%**：`MaskSummarizer`（触边检测与 topY）+ `SubjectTracker`（空间加权打分、粘性跟踪与双人合并）。 |
-| **W3-6** | `FrameSyncHub` 跨模态时钟同步 | 实现环形时间戳对齐器，将高频 IMU（60Hz）、视频帧（30/60Hz）与 Vision 异步结果插值拼装为标准 `Frame`。 | 时间戳插值偏差 < 10ms，组装单次耗时 < 0.2ms，零死锁。 | **已交付 100%**：`FrameSyncHub` 环形缓冲时间戳对齐，生成兼容 `compose-core` 的 `PerceptionFrame` 与 JSON 导出。 |
-| **W3-7** | Perception Debug HUD 面板 | 构建极简 SwiftUI / Metal 调试悬浮层，实时可视化渲染姿态骨骼、主体 Box、水平仪姿态与实时 FPS。 | 开启 HUD 帧率开销 < 5%，随时可通过配置开关显隐。 | **已交付 100%**：`PerceptionDebugHUD.swift` 极简 Canvas + 动态水平线 + 遥测状态卡片 + 一键显隐。 |
-| **W3-8** | P1-W3 集成测试与验证门禁 | 扩充 `./scripts/verify-all.sh` 门禁，验证采集与感知管线 Mock 驱动与回放，确保持续 100% 绿灯。 | 10 步门禁持续全绿，无警告，无安全漏洞。 | **已交付 100%**：`validate-swift-parity.py` 扩充校验全部 4 个 Swift Package 与测试套件，门禁 10/10 持续全绿。 |
+| **W3-3** | `PerceptionKit` 60Hz IMU 姿态滤波 | 封装 `CMMotionManager` (`xArbitraryZVertical` 60Hz)，采集俯仰角、横滚角、角速度 (`angular_speed`) 与平拍标志 (`is_flatish`)，实现 `OneEuroFilter` 滤波。 | 手持微抖动消除，快速移动响应延迟 < 25ms，静止漂移 < 0.1°。 | **已交付 100%**：`OneEuroFilter` 与 `AttitudeTracker` 完成，真机 `CMMotionManager` 与模拟回放双支持。 |
+| **W3-4** | `PerceptionKit` Vision 人体姿态 | 集成 `VNDetectHumanBodyPoseRequest` 与 `VNDetectFaceRectanglesRequest` 回退，提取 19 处骨骼关键点（含合成 `Neck`/`Root`）并转换为 `compose-core` 契约结构体。 | 单人/多人关键点置信度解析准确，15Hz 稳定推断，无内存泄漏。 | **已交付 100%**：`BodyPoseAnalyzer` 实现 Vision 真实调用、19 关节映射、置信度过滤与独立关节平滑。 |
+| **W3-5** | `PerceptionKit` 实例掩码与多率调度 | 集成 `VNGeneratePersonSegmentationRequest` 128×96 网格扫描器与 `PerceptionScheduler`（15/8/10/4Hz 多率调度 + 温控降频 + Y 平面逆光探针）。 | 掩码三段列跨度与触边检测准确，`.serious`/`.critical` 热状态自动降频。 | **已交付 100%**：`MaskSummarizer`、`SubjectTracker`、`PerceptionScheduler` 全部就绪并通过单测。 |
+| **W3-6** | `FrameSyncHub` 跨模态时钟同步 | 实现环形时间戳对齐器，将高频 IMU（60Hz）、视频帧（30/60Hz）与 Vision 异步结果插值拼装为标准 `Frame`。 | 时间戳插值偏差 < 10ms，组装单次耗时 < 0.2ms，零死锁。 | **已交付 100%**：`FrameSyncHub` 环形缓冲时间戳对齐，输出 100% 兼容 `compose-core::Frame` 的 JSON。 |
+| **W3-7** | Perception Debug HUD 面板 | 构建极简 SwiftUI Canvas 调试悬浮层，实时可视化渲染 19 骨骼连线、主体 Box、水平仪姿态与实时 FPS。 | 开启 HUD 帧率开销 < 5%，随时可通过配置开关显隐。 | **已交付 100%**：`PerceptionDebugHUD.swift` 支持 PascalCase/camelCase 骨骼渲染、动态水平线与遥测状态卡片。 |
+| **W3-8** | P1-W3 集成测试与验证门禁 | 扩充 `./scripts/verify-all.sh` 门禁，新增跨语言 Schema 一致性校验与 13 组黄金向量回归。 | 10 步门禁持续全绿，无警告，无安全漏洞。 | **已交付 100%**：`validate-swift-parity.py` 自动校验 Swift ↔ Rust Schema，10/10 门禁全绿。 |
+
+### 6.3 P1 Sprint 2 (Week 4) 任务分解与推进计划 (Next Up)
+
+Week 4 的核心目标是打通 **`PerceptionKit` → `ComposeKit` (`LiveComposer`) → `CameraApp` 实时取景叠加层与触觉/语音反馈闭环**，并在 iOS 端启动 `ReviewApp` PhotoKit 体检原型：
+
+| 任务编号 | 模块 / 目标 | 核心工作内容 | 验证与验收标准 (SLA) |
+|---|---|---|---|
+| **W4-1** | `ComposeKit` 实时流桥接 | 将 `FrameSyncHub` 输出与 `LiveComposer` (`LiveEngine.step_json`) 连接为 `AsyncStream<LiveOutput>`，加载 `Thresholds.json` 与双语文案字典 `Hints.json`。 | 端到端单帧推理 < 1ms，主线程零阻塞。 |
+| **W4-2** | `CameraApp` 单条提示胶囊与水平仪 UI | 实现取景器顶部/底部单条构图提示胶囊 (`HintPillView`)、高精度动态水平仪 (`HorizonIndicatorView`) 与脚底目标线 (`TargetLineOverlay`)。 | 60fps 丝滑动画，与 `ArbiterOutput` 状态机严密同步。 |
+| **W4-3** | "构图不错，可以拍" 绿框与触觉反馈 | 当进入 `ArbiterOutput::Good` 状态时，渲染主体绿色呼吸框并触发 `UIImpactFeedbackGenerator(.light)` 触觉确认。 | 连续稳定 0.6s 触发，无误报抖动。 |
+| **W4-4** | `ReviewApp` iOS 相册非破坏性体检原型 | 基于 PhotoKit 与 `ComposeKit` 实现 iOS 端单张/多张照片构图体检评分与一键可逆拉直/裁切 (`PHAdjustmentData`) 原型。 | 100% 可逆写回系统相册，不破坏原片 EXIF/Live Photo。 |
+
 

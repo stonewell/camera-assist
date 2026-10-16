@@ -110,6 +110,51 @@ impl NormalizedRect {
     }
 }
 
+/// Edge of the normalized `[0, 1] x [0, 1]` viewport frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum FrameEdge {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+/// Returns true if point `p` lies inside the `[0.0, 1.0] x [0.0, 1.0]` unit frame.
+pub fn in_unit_frame(p: NormalizedPoint) -> bool {
+    (0.0..=1.0).contains(&p.x) && (0.0..=1.0).contains(&p.y)
+}
+
+/// Computes the intersection of segment `a -> b` with the unit `[0, 1] x [0, 1]` boundary.
+/// Assumes one endpoint is inside and one is outside the frame.
+/// Returns `(FrameEdge, t)` where `t` in `[0.0, 1.0]` is the parametric distance from `a`.
+pub fn intersect_unit_frame(a: NormalizedPoint, b: NormalizedPoint) -> Option<(FrameEdge, f32)> {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let mut hits: Vec<(FrameEdge, f32)> = Vec::with_capacity(4);
+
+    let mut consider = |t: f32, edge: FrameEdge| {
+        if (0.0..=1.0).contains(&t) {
+            let x = a.x + dx * t;
+            let y = a.y + dy * t;
+            if (-1e-5..=1.0 + 1e-5).contains(&x) && (-1e-5..=1.0 + 1e-5).contains(&y) {
+                hits.push((edge, t));
+            }
+        }
+    };
+
+    if dx.abs() > 1e-6 {
+        consider(-a.x / dx, FrameEdge::Left);
+        consider((1.0 - a.x) / dx, FrameEdge::Right);
+    }
+    if dy.abs() > 1e-6 {
+        consider(-a.y / dy, FrameEdge::Top);
+        consider((1.0 - a.y) / dy, FrameEdge::Bottom);
+    }
+
+    hits.into_iter()
+        .min_by(|x, y| x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +173,14 @@ mod tests {
         // Union = 0.16 + 0.16 - 0.04 = 0.28. IoU = 0.04 / 0.28 = 1/7 ≈ 0.142857
         let iou = r1.iou(&r2);
         assert!((iou - (1.0 / 7.0)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_intersect_unit_frame() {
+        let a = NormalizedPoint::new(0.5, 0.8);
+        let b = NormalizedPoint::new(0.5, 1.2);
+        let (edge, t) = intersect_unit_frame(a, b).expect("should intersect bottom");
+        assert_eq!(edge, FrameEdge::Bottom);
+        assert!((t - 0.5).abs() < 1e-5);
     }
 }

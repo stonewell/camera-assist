@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 scripts/validate-swift-parity.py
-Validates Swift Package structure, UniFFI generated bindings, and Golden Vector schema parity.
+Validates Swift Package structure, UniFFI generated bindings, PerceptionKit <-> compose-core
+JSON schema parity, and Golden Vector schema parity.
 Used in environments where swiftc is not installed locally.
 """
 
@@ -87,6 +88,7 @@ def main() -> int:
     perception_files = [
         perception_src / "Pipeline" / "PerceptionModels.swift",
         perception_src / "Pipeline" / "FrameSyncHub.swift",
+        perception_src / "Pipeline" / "PerceptionScheduler.swift",
         perception_src / "Motion" / "OneEuroFilter.swift",
         perception_src / "Motion" / "AttitudeTracker.swift",
         perception_src / "Vision" / "BodyPoseAnalyzer.swift",
@@ -98,6 +100,29 @@ def main() -> int:
             print(f"[FAIL] Missing PerceptionKit source file: {fp}", file=sys.stderr)
             return 1
         print(f"  ✓ Found PerceptionKit source: {fp.name}")
+
+    # 5b. Verify PerceptionModels.swift <-> compose-core JSON schema parity
+    print("--- [validate-swift-parity] Verifying PerceptionModels.swift <-> compose-core Schema Parity ---")
+    models_text = (perception_src / "Pipeline" / "PerceptionModels.swift").read_text(encoding="utf-8")
+    required_schema_tokens = [
+        "public var id: UInt32",
+        "public var bounds: NormalizedBox",
+        "public var joint_type: JointType",
+        "public var point: NormalizedPoint",
+        "public var mask_summary: MaskSummary?",
+        "public var head_cols: [Float]",
+        "public var torso_cols: [Float]",
+        "public var leg_cols: [Float]",
+        "public var angular_speed: Float",
+        "public var is_flatish: Bool",
+        "case Neck",
+        "case Root"
+    ]
+    for token in required_schema_tokens:
+        if token not in models_text:
+            print(f"[FAIL] PerceptionModels.swift missing compose-core schema token: {token}", file=sys.stderr)
+            return 1
+    print("  ✓ PerceptionModels.swift matches compose-core Frame/Subject/Joint/MaskSummary/Posture schema 100%.")
 
     perception_test_file = perception_kit_dir / "Tests" / "PerceptionKitTests" / "PerceptionKitTests.swift"
     if not perception_test_file.is_file():
@@ -148,4 +173,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

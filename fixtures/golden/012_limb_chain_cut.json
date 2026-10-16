@@ -1,0 +1,54 @@
+{
+  "id": "012_limb_chain_cut",
+  "description": "Half-body portrait with right shoulder and elbow inside frame but missing wrist extrapolated across right edge",
+  "input": {
+    "frame": {
+      "t": 12.0,
+      "subjects": [
+        {
+          "id": 1,
+          "bounds": { "x": 0.35, "y": 0.12, "width": 0.58, "height": 0.65 },
+          "joints": {
+            "RightShoulder": {
+              "joint_type": "RightShoulder",
+              "point": { "x": 0.72, "y": 0.35 },
+              "confidence": 0.92
+            },
+            "RightElbow": {
+              "joint_type": "RightElbow",
+              "point": { "x": 0.91, "y": 0.45 },
+              "confidence": 0.88
+            }
+          },
+          "facing": "Frontal",
+          "shot_type": "HalfBody",
+          "confidence": 0.95,
+          "mask_summary": null
+        }
+      ],
+      "primary_subject_index": 0,
+      "posture": {
+        "roll_deg": 0.0,
+        "pitch_deg": -1.0,
+        "elevation_deg": -1.0
+      },
+      "camera": {
+        "focal_length_mm": 24.0,
+        "hfov_deg": 73.7
+      },
+      "exposure": {
+        "iso": 100.0,
+        "shutter_speed_sec": 0.002,
+        "ev": 12.0
+      }
+    },
+    "light": null
+  },
+  "expected_findings": [
+    {
+      "id": "crop.joint",
+      "severity": "Major",
+      "hint_key": "step_back"
+    }
+  ]
+}

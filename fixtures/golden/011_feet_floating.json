@@ -1,0 +1,59 @@
+{
+  "id": "011_feet_floating",
+  "description": "Full-body portrait with excessive bottom gap below ankles triggers feet.floating",
+  "input": {
+    "frame": {
+      "t": 11.0,
+      "subjects": [
+        {
+          "id": 1,
+          "bounds": { "x": 0.35, "y": 0.10, "width": 0.30, "height": 0.65 },
+          "joints": {
+            "Nose": {
+              "joint_type": "Nose",
+              "point": { "x": 0.50, "y": 0.15 },
+              "confidence": 0.95
+            },
+            "LeftAnkle": {
+              "joint_type": "LeftAnkle",
+              "point": { "x": 0.46, "y": 0.72 },
+              "confidence": 0.90
+            },
+            "RightAnkle": {
+              "joint_type": "RightAnkle",
+              "point": { "x": 0.54, "y": 0.72 },
+              "confidence": 0.90
+            }
+          },
+          "facing": "Frontal",
+          "shot_type": "FullBody",
+          "confidence": 0.96,
+          "mask_summary": null
+        }
+      ],
+      "primary_subject_index": 0,
+      "posture": {
+        "roll_deg": 0.1,
+        "pitch_deg": -2.0,
+        "elevation_deg": -2.0
+      },
+      "camera": {
+        "focal_length_mm": 24.0,
+        "hfov_deg": 73.7
+      },
+      "exposure": {
+        "iso": 100.0,
+        "shutter_speed_sec": 0.002,
+        "ev": 12.0
+      }
+    },
+    "light": null
+  },
+  "expected_findings": [
+    {
+      "id": "feet.floating",
+      "severity": "Major",
+      "hint_key": "lower_phone"
+    }
+  ]
+}

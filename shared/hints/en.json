@@ -16,6 +16,11 @@
       "secondary": "Avoid perspective distortion",
       "spoken": "Hold upright"
     },
+    "lower_phone": {
+      "primary": "Lower phone slightly",
+      "secondary": "Feet near bottom edge for longer legs",
+      "spoken": "Lower phone"
+    },
     "lower_and_vertical": {
       "primary": "Lower phone, hold upright",
       "secondary": "Feet near bottom edge for longer legs",

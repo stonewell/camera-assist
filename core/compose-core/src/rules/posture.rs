@@ -1,7 +1,7 @@
 use super::{Rule, RuleContext};
 use crate::model::{Action, Audience, Finding, Severity};
 
-/// Rule A1: Level Phone (Roll angle check)
+/// Rule A1: Level Phone (Roll angle check with hysteresis and flat-phone guard)
 #[derive(Debug, Default)]
 pub struct TiltRule;
 
@@ -11,8 +11,16 @@ impl Rule for TiltRule {
     }
 
     fn evaluate(&self, ctx: &RuleContext) -> Option<Finding> {
+        if ctx.frame.posture.is_flatish {
+            return None;
+        }
+
         let roll = ctx.frame.posture.roll_deg;
-        let threshold = ctx.config.level.enter_deg;
+        let threshold = if ctx.previous_active.contains(self.id()) {
+            ctx.config.level.exit_deg
+        } else {
+            ctx.config.level.enter_deg
+        };
 
         if roll.abs() > threshold {
             let is_cw = roll > 0.0;
@@ -38,7 +46,7 @@ impl Rule for TiltRule {
     }
 }
 
-/// Rule A2: Hold Vertical (Pitch angle / perspective distortion check)
+/// Rule A2: Hold Vertical (Pitch angle / perspective distortion check with hysteresis)
 #[derive(Debug, Default)]
 pub struct PitchRule;
 
@@ -49,7 +57,11 @@ impl Rule for PitchRule {
 
     fn evaluate(&self, ctx: &RuleContext) -> Option<Finding> {
         let pitch = ctx.frame.posture.pitch_deg;
-        let threshold = ctx.config.tilt.enter_deg;
+        let threshold = if ctx.previous_active.contains(self.id()) {
+            ctx.config.tilt.exit_deg
+        } else {
+            ctx.config.tilt.enter_deg
+        };
 
         if pitch.abs() > threshold {
             Some(Finding::new(

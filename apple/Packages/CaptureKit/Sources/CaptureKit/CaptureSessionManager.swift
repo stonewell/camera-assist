@@ -40,20 +40,24 @@ public protocol CaptureSessionManaging: AnyObject, Sendable {
 }
 
 /// Production AVCaptureSession manager for Camera Assist.
-/// Manages high-performance 24MP capture session, 60fps video data output, and adaptive throttling.
+/// Manages high-performance 24MP capture session, prepared photo settings, Camera Control sliders,
+/// tap-to-focus/exposure, 60fps video data output, and adaptive thermal throttling.
 public final class CaptureSessionManager: NSObject, @unchecked Sendable, CaptureSessionManaging {
     public private(set) var isRunning: Bool = false
     public let configuration: CaptureConfiguration
     public private(set) var currentLens: CameraLensType = .virtualMultiCamera
     public private(set) var currentThermalState: CameraThermalState = .nominal
+    public private(set) var lastFocusPoint: CGPoint = CGPoint(x: 0.5, y: 0.5)
+    public private(set) var currentExposureBias: Float = 0.0
 
     public typealias FrameHandler = @Sendable (VideoSampleFrame) -> Void
     private var onFrameReceived: FrameHandler?
 
     #if canImport(AVFoundation)
-    private var session: AVCaptureSession?
+    public private(set) var session: AVCaptureSession?
+    public private(set) var activeDevice: AVCaptureDevice?
     private var videoOutput: AVCaptureVideoDataOutput?
-    private var photoOutput: AVCapturePhotoOutput?
+    public private(set) var photoOutput: AVCapturePhotoOutput?
     private let sessionQueue = DispatchQueue(label: "com.cameraassist.capturesession", qos: .userInitiated)
     private let analysisQueue = DispatchQueue(label: "com.cameraassist.analysis", qos: .userInteractive)
     #endif
@@ -69,7 +73,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
         self.onFrameReceived = handler
     }
 
-    /// Start capture session pipeline.
+    /// Start capture session pipeline with 24MP maxPhotoDimensions, prepared settings, and Camera Control sliders.
     public func startSession() async throws {
         #if canImport(AVFoundation) && !targetEnvironment(simulator)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -78,57 +82,81 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
                     continuation.resume()
                     return
                 }
-                do {
-                    let sess = AVCaptureSession()
-                    sess.beginConfiguration()
-                    sess.sessionPreset = .photo
+                let sess = AVCaptureSession()
+                sess.beginConfiguration()
+                sess.sessionPreset = .photo
 
-                    // Configure best available back camera
-                    let device = AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back)
-                        ?? AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
-                        ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+                // 1. Configure best available back camera
+                let device = AVCaptureDevice.default(.builtInTripleCamera, for: .video, position: .back)
+                    ?? AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
+                    ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
 
-                    if let dev = device, let input = try? AVCaptureDeviceInput(device: dev) {
-                        if sess.canAddInput(input) {
-                            sess.addInput(input)
-                        }
+                if let dev = device, let input = try? AVCaptureDeviceInput(device: dev) {
+                    if sess.canAddInput(input) {
+                        sess.addInput(input)
+                        self.activeDevice = dev
                     }
-
-                    // 24MP Photo Output
-                    let photo = AVCapturePhotoOutput()
-                    photo.maxPhotoQualityPrioritization = .quality
-                    if self.configuration.enableDeferredProcessing && photo.isAutoDeferredPhotoProcessingSupported {
-                        photo.isAutoDeferredPhotoProcessingEnabled = true
-                    }
-                    if self.configuration.enableZeroShutterLag && photo.isZeroShutterLagSupported {
-                        photo.isZeroShutterLagEnabled = true
-                    }
-                    if self.configuration.enableResponsiveCapture && photo.isResponsiveCaptureSupported {
-                        photo.isResponsiveCaptureEnabled = true
-                    }
-                    if sess.canAddOutput(photo) {
-                        sess.addOutput(photo)
-                    }
-                    self.photoOutput = photo
-
-                    // Real-time Video Analysis Output (60 FPS)
-                    let video = AVCaptureVideoDataOutput()
-                    video.alwaysDiscardsLateVideoFrames = true
-                    video.videoSettings = [
-                        kCVPixelBufferPixelFormatTypeKey as String: self.configuration.pixelFormatType
-                    ]
-                    video.setSampleBufferDelegate(self, queue: self.analysisQueue)
-                    if sess.canAddOutput(video) {
-                        sess.addOutput(video)
-                    }
-                    self.videoOutput = video
-
-                    sess.commitConfiguration()
-                    sess.startRunning()
-                    self.session = sess
-                    self.isRunning = sess.isRunning
-                    continuation.resume()
                 }
+
+                // 2. 24MP Photo Output + maxPhotoDimensions + preparedPhotoSettings
+                let photo = AVCapturePhotoOutput()
+                photo.maxPhotoQualityPrioritization = .quality
+                if let dev = self.activeDevice {
+                    let supportedDims = dev.activeFormat.supportedMaxPhotoDimensions
+                    if let bestDim = supportedDims.max(by: { ($0.width * $0.height) < ($1.width * $1.height) }) {
+                        photo.maxPhotoDimensions = bestDim
+                    }
+                }
+                if self.configuration.enableDeferredProcessing && photo.isAutoDeferredPhotoProcessingSupported {
+                    photo.isAutoDeferredPhotoProcessingEnabled = true
+                }
+                if self.configuration.enableZeroShutterLag && photo.isZeroShutterLagSupported {
+                    photo.isZeroShutterLagEnabled = true
+                }
+                if self.configuration.enableResponsiveCapture && photo.isResponsiveCaptureSupported {
+                    photo.isResponsiveCaptureEnabled = true
+                }
+                if sess.canAddOutput(photo) {
+                    sess.addOutput(photo)
+                    let prepared = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.hevc])
+                    prepared.photoQualityPrioritization = .quality
+                    prepared.maxPhotoDimensions = photo.maxPhotoDimensions
+                    photo.setPreparedPhotoSettingsArray([prepared], completionHandler: nil)
+                }
+                self.photoOutput = photo
+
+                // 3. Configure iOS 18 Camera Control sliders (Zoom & Exposure Bias)
+                if #available(iOS 18.0, macOS 15.0, *), let dev = self.activeDevice, sess.supportsControls {
+                    for control in sess.controls {
+                        sess.removeControl(control)
+                    }
+                    let zoomSlider = AVCaptureSystemZoomSlider(device: dev)
+                    if sess.canAddControl(zoomSlider) {
+                        sess.addControl(zoomSlider)
+                    }
+                    let exposureSlider = AVCaptureSystemExposureBiasSlider(device: dev)
+                    if sess.canAddControl(exposureSlider) {
+                        sess.addControl(exposureSlider)
+                    }
+                }
+
+                // 4. Real-time Video Analysis Output (60 FPS, 420f/420v)
+                let video = AVCaptureVideoDataOutput()
+                video.alwaysDiscardsLateVideoFrames = true
+                video.videoSettings = [
+                    kCVPixelBufferPixelFormatTypeKey as String: self.configuration.pixelFormatType
+                ]
+                video.setSampleBufferDelegate(self, queue: self.analysisQueue)
+                if sess.canAddOutput(video) {
+                    sess.addOutput(video)
+                }
+                self.videoOutput = video
+
+                sess.commitConfiguration()
+                sess.startRunning()
+                self.session = sess
+                self.isRunning = sess.isRunning
+                continuation.resume()
             }
         }
         #else
@@ -158,9 +186,62 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
         #endif
     }
 
-    /// Switch active lens type.
+    /// Switch active lens type or virtual optical zoom factor (`0.5x`, `1.0x`, `2.0x`, `3.0x`).
     public func switchLens(to lens: CameraLensType) async throws {
         self.currentLens = lens
+        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        sessionQueue.async { [weak self] in
+            guard let self = self, let dev = self.activeDevice else { return }
+            let targetZoom: CGFloat
+            switch lens {
+            case .ultraWide: targetZoom = 1.0
+            case .wide, .virtualMultiCamera: targetZoom = 2.0
+            case .telephoto: targetZoom = 6.0
+            }
+            if (try? dev.lockForConfiguration()) != nil {
+                let clamped = max(dev.minAvailableVideoZoomFactor, min(targetZoom, dev.maxAvailableVideoZoomFactor))
+                dev.ramp(toVideoZoomFactor: clamped, withRate: 8.0)
+                dev.unlockForConfiguration()
+            }
+        }
+        #endif
+    }
+
+    /// Tap-to-focus and exposure point of interest in normalized device coordinates `[0, 1]`.
+    public func focusAndExpose(at devicePoint: CGPoint) {
+        self.lastFocusPoint = devicePoint
+        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        sessionQueue.async { [weak self] in
+            guard let dev = self?.activeDevice else { return }
+            if (try? dev.lockForConfiguration()) != nil {
+                if dev.isFocusPointOfInterestSupported && dev.isFocusModeSupported(.continuousAutoFocus) {
+                    dev.focusPointOfInterest = devicePoint
+                    dev.focusMode = .continuousAutoFocus
+                }
+                if dev.isExposurePointOfInterestSupported && dev.isExposureModeSupported(.continuousAutoExposure) {
+                    dev.exposurePointOfInterest = devicePoint
+                    dev.exposureMode = .continuousAutoExposure
+                }
+                dev.isSubjectAreaChangeMonitoringEnabled = true
+                dev.unlockForConfiguration()
+            }
+        }
+        #endif
+    }
+
+    /// Adjusts camera exposure compensation bias (EV).
+    public func setExposureBias(_ ev: Float) {
+        self.currentExposureBias = ev
+        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        sessionQueue.async { [weak self] in
+            guard let dev = self?.activeDevice else { return }
+            if (try? dev.lockForConfiguration()) != nil {
+                let clamped = max(dev.minExposureTargetBias, min(ev, dev.maxExposureTargetBias))
+                dev.setExposureTargetBias(clamped, completionHandler: nil)
+                dev.unlockForConfiguration()
+            }
+        }
+        #endif
     }
 
     /// Dynamically throttle capture frame rate based on device thermal pressure.

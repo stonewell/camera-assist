@@ -7,7 +7,9 @@ pub mod subject;
 
 pub use finding::{Action, Audience, Finding, Severity};
 pub use frame::{CameraIntrinsics, ExposureSummary, Frame, Posture};
-pub use geometry::{NormalizedPoint, NormalizedRect};
+pub use geometry::{
+    in_unit_frame, intersect_unit_frame, FrameEdge, NormalizedPoint, NormalizedRect,
+};
 pub use joint::{Joint, JointType};
 pub use light::{LightContext, LightDirection, LightQuality};
 pub use subject::{Facing, MaskSummary, ShotType, Subject};

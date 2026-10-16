@@ -52,8 +52,22 @@ public struct RenderJoint: Identifiable, Sendable {
     }
 }
 
-/// Standard bone connections between keypoints.
+/// Standard bone connections between keypoints (supports canonical PascalCase and shorthand keys).
 public let StandardSkeletalBones: [(from: String, to: String)] = [
+    ("Nose", "Neck"),
+    ("Neck", "Root"),
+    ("Neck", "LeftShoulder"),
+    ("Neck", "RightShoulder"),
+    ("LeftShoulder", "LeftElbow"),
+    ("LeftElbow", "LeftWrist"),
+    ("RightShoulder", "RightElbow"),
+    ("RightElbow", "RightWrist"),
+    ("Root", "LeftHip"),
+    ("Root", "RightHip"),
+    ("LeftHip", "LeftKnee"),
+    ("LeftKnee", "LeftAnkle"),
+    ("RightHip", "RightKnee"),
+    ("RightKnee", "RightAnkle"),
     ("nose", "neck"),
     ("neck", "root"),
     ("neck", "lShoulder"),

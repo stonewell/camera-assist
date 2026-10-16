@@ -16,6 +16,11 @@
       "secondary": "避免人体和建筑透视变形",
       "spoken": "手机拿正"
     },
+    "lower_phone": {
+      "primary": "手机放低一点",
+      "secondary": "脚贴底边更显腿长",
+      "spoken": "手机放低"
+    },
     "lower_and_vertical": {
       "primary": "手机放低、保持竖直",
       "secondary": "脚贴底边更显腿长",

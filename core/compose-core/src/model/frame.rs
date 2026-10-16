@@ -2,11 +2,18 @@ use super::subject::Subject;
 use serde::{Deserialize, Serialize};
 
 /// Real-time IMU posture of the camera device.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Posture {
-    pub roll_deg: f32,      // 左右歪斜角：正数表示顺时针歪斜
-    pub pitch_deg: f32,     // 俯仰角：正数表示仰角，负数表示俯角
+    #[serde(default)]
+    pub roll_deg: f32, // 左右歪斜角：正数表示顺时针歪斜
+    #[serde(default)]
+    pub pitch_deg: f32, // 俯仰角：正数表示仰角，负数表示俯角
+    #[serde(default)]
     pub elevation_deg: f32, // 地平线高度夹角
+    #[serde(default)]
+    pub angular_speed: f32, // 角速度 (rad/s)，用于快速晃动时静默提示
+    #[serde(default)]
+    pub is_flatish: bool, // |g.z| > 0.8，平放俯拍/仰拍时 roll 不可靠
 }
 
 impl Posture {
@@ -14,6 +21,8 @@ impl Posture {
         roll_deg: 0.0,
         pitch_deg: 0.0,
         elevation_deg: 0.0,
+        angular_speed: 0.0,
+        is_flatish: false,
     };
 
     pub fn new(roll_deg: f32, pitch_deg: f32) -> Self {
@@ -21,7 +30,15 @@ impl Posture {
             roll_deg,
             pitch_deg,
             elevation_deg: pitch_deg,
+            angular_speed: 0.0,
+            is_flatish: false,
         }
+    }
+
+    pub fn with_motion(mut self, angular_speed: f32, is_flatish: bool) -> Self {
+        self.angular_speed = angular_speed;
+        self.is_flatish = is_flatish;
+        self
     }
 }
 

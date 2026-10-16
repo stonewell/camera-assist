@@ -47,11 +47,22 @@ public struct MotionReading: Sendable, Equatable {
     }
 }
 
-/// Computes filtered camera roll, pitch, and elevation from 60Hz IMU gravity vector.
+/// Computes filtered camera roll, pitch, elevation, angular speed, and flat-orientation state from 60Hz IMU gravity vector.
 public final class AttitudeTracker: @unchecked Sendable {
     private let rollFilter: OneEuroFilter
     private let pitchFilter: OneEuroFilter
     public var captureAngleDeg: CGFloat = 90.0
+
+    #if canImport(CoreMotion)
+    private let motionManager = CMMotionManager()
+    private let motionQueue: OperationQueue = {
+        let q = OperationQueue()
+        q.name = "com.cameraassist.perceptionkit.motion"
+        q.maxConcurrentOperationCount = 1
+        q.qualityOfService = .userInteractive
+        return q
+    }()
+    #endif
 
     public init(minCutoff: Double = 1.0, beta: Double = 0.01, dCutoff: Double = 1.0) {
         self.rollFilter = OneEuroFilter(minCutoff: minCutoff, beta: beta, dCutoff: dCutoff)
@@ -82,13 +93,44 @@ public final class AttitudeTracker: @unchecked Sendable {
 
         let filteredRoll = rollFilter.filter(rawRoll, timestamp: reading.timestamp)
         let filteredPitch = pitchFilter.filter(rawPitch, timestamp: reading.timestamp)
+        let isFlatish = abs(gz) > 0.85
 
         return Posture(
             roll_deg: Float(filteredRoll),
             pitch_deg: Float(filteredPitch),
-            elevation_deg: Float(filteredPitch)
+            elevation_deg: Float(filteredPitch),
+            angular_speed: Float(reading.angularSpeed),
+            is_flatish: isFlatish
         )
     }
+
+    #if canImport(CoreMotion)
+    /// Starts live 60Hz CoreMotion device-motion updates and invokes `onReading` on the motion queue.
+    public func startLiveMotionUpdates(onReading: @escaping @Sendable (MotionReading) -> Void) {
+        guard motionManager.isDeviceMotionAvailable else { return }
+        motionManager.deviceMotionUpdateInterval = 1.0 / 60.0
+        motionManager.startDeviceMotionUpdates(using: .xArbitraryZVertical, to: motionQueue) { motion, _ in
+            guard let motion = motion else { return }
+            let reading = MotionReading(
+                timestamp: motion.timestamp,
+                gravityX: motion.gravity.x,
+                gravityY: motion.gravity.y,
+                gravityZ: motion.gravity.z,
+                rotationRateX: motion.rotationRate.x,
+                rotationRateY: motion.rotationRate.y,
+                rotationRateZ: motion.rotationRate.z
+            )
+            onReading(reading)
+        }
+    }
+
+    /// Stops live CoreMotion device-motion updates.
+    public func stopLiveMotionUpdates() {
+        if motionManager.isDeviceMotionActive {
+            motionManager.stopDeviceMotionUpdates()
+        }
+    }
+    #endif
 
     /// Reset internal filter state.
     public func reset() {

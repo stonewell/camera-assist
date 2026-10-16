@@ -43,6 +43,10 @@ pub struct Finding {
     pub primary_action: Action,
     pub secondary_action: Option<Action>,
     pub hint_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<f32>,
 }
 
 impl Finding {
@@ -60,11 +64,19 @@ impl Finding {
             primary_action,
             secondary_action: None,
             hint_key: hint_key.into(),
+            value: None,
+            target: None,
         }
     }
 
     pub fn with_secondary_action(mut self, action: Action) -> Self {
         self.secondary_action = Some(action);
+        self
+    }
+
+    pub fn with_metrics(mut self, value: f32, target: f32) -> Self {
+        self.value = Some(value);
+        self.target = Some(target);
         self
     }
 
