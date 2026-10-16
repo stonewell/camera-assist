@@ -12,17 +12,17 @@
 
 | 应用 | 定位与核心能力 | 目标平台 | 开发方案文档 |
 |---|---|---|---|
-| **帮拍相机 (CameraApp)** | **实时引导相机**：自建取景器 + 原生系统成像管线，提供实时构图提示、光线站位指引、安全自动曝光补偿、**路人帮拍模式**（锁定构图 + 对齐引导）以及**语音播报提示**。 | iOS 18+ (iPhone) | [帮拍相机 iOS App 开发方案 v1.6](camera-assist-app-plan.md) |
-| **照片复盘 (ReviewApp)** | **事后构图体检与修复**：无论使用手机还是单反拍摄，拍完后均可进行构图体检、光线复盘，支持一键拉直与推荐裁切、生成旅行总结报告，并可通过深链接一键跳转帮拍相机重拍。 | iOS + 桌面端 (macOS / Windows / Linux) | [照片复盘应用开发方案 v1.3](photo-review-app-plan.md) |
+| **帮拍相机 (CameraApp)** | **实时引导相机**：自建取景器 + 原生系统成像管线，提供实时构图提示、光线站位指引、安全自动曝光补偿、**路人帮拍模式**（锁定构图 + 对齐引导）以及**语音播报提示**。 | iOS 18+ (iPhone) | [帮拍相机 iOS App 开发方案 v1.6](docs/camera-assist-app-plan.md) |
+| **照片复盘 (ReviewApp)** | **事后构图体检与修复**：无论使用手机还是单反拍摄，拍完后均可进行构图体检、光线复盘，支持一键拉直与推荐裁切、生成旅行总结报告，并可通过深链接一键跳转帮拍相机重拍。 | iOS + 桌面端 (macOS / Windows / Linux) | [照片复盘应用开发方案 v1.3](docs/photo-review-app-plan.md) |
 
 ### 辅助调研、全局规划与归档资料
 
-- **任务优先级与协同**：[研发任务优先级与双项目协同规划](development-priorities.md) —— 制定了双应用 P0–P3 任务优先级、依赖关键路径图与排期对齐表。
-- **功能调研**：[帮拍场景其他有效功能调研](helper-mode-features-research.md) —— 调研了路人帮拍、表情口令卡、偏好卡、智能挑片、双机实时预览等竞品与用户痛点。
-- **归档文档**：[archive/](archive/) —— 包含合并重构前的三份早期技术规划：
-  - [构图规则引擎 (`composition-rule-engine-ios.md`)](archive/composition-rule-engine-ios.md)
-  - [原生相机能力利用 (`native-camera-leverage-ios.md`)](archive/native-camera-leverage-ios.md)
-  - [光线与站位建议 (`light-distance-advisor-ios.md`)](archive/light-distance-advisor-ios.md)
+- **任务优先级与协同**：[研发任务优先级与双项目协同规划](docs/development-priorities.md) —— 制定了双应用 P0–P3 任务优先级、依赖关键路径图与排期对齐表。
+- **功能调研**：[帮拍场景其他有效功能调研](docs/helper-mode-features-research.md) —— 调研了路人帮拍、表情口令卡、偏好卡、智能挑片、双机实时预览等竞品与用户痛点。
+- **归档文档**：[docs/archive/](docs/archive/) —— 包含合并重构前的三份早期技术规划：
+  - [构图规则引擎 (`composition-rule-engine-ios.md`)](docs/archive/composition-rule-engine-ios.md)
+  - [原生相机能力利用 (`native-camera-leverage-ios.md`)](docs/archive/native-camera-leverage-ios.md)
+  - [光线与站位建议 (`light-distance-advisor-ios.md`)](docs/archive/light-distance-advisor-ios.md)
 
 ---
 
@@ -30,6 +30,7 @@
 
 ```
 camera-assist/
+├─ docs/                              产品方案、开发规划、功能调研与历史归档 (archive/)
 ├─ core/                              Rust workspace（多端共用底层核心）
 │  ├─ compose-core/                   ★ 规则引擎：纯 Rust，包含规则 A–G、几何计算、光线模型、仲裁器、静态图分析
 │  ├─ compose-ffi/                    UniFFI 绑定 → 生成 iOS/macOS 适用的 XCFramework 与 Swift Package
