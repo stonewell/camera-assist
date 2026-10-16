@@ -17,3 +17,7 @@ serde_json.workspace = true
 [[bench]]
 name = "engine_bench"
 harness = false
+
+[[bench]]
+name = "desktop_batch_bench"
+harness = false

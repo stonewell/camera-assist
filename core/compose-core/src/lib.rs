@@ -3,65 +3,24 @@
 //! This crate is strictly platform-independent and `#![forbid(unsafe_code)]`.
 #![forbid(unsafe_code)]
 
+pub mod config;
+pub mod hint;
 pub mod model;
+pub mod rules;
 
+pub use config::*;
+pub use hint::*;
 pub use model::*;
+pub use rules::*;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
-/// Baseline prototype rule evaluator.
-/// Evaluates posture, crop, and placement rules on a single frame.
-pub fn evaluate_frame(frame: &Frame, _light: Option<&LightContext>) -> Vec<Finding> {
-    let mut findings = Vec::new();
-
-    // Rule A: Level phone (roll threshold 2.5 deg)
-    if frame.posture.roll_deg.abs() > 2.5 {
-        let is_cw = frame.posture.roll_deg > 0.0;
-        findings.push(Finding::new(
-            "tilt.level",
-            Severity::Major,
-            Audience::Photographer,
-            Action::Rotate {
-                deg: frame.posture.roll_deg.abs(),
-                clockwise: !is_cw,
-            },
-            if is_cw { "rotate_ccw" } else { "rotate_cw" },
-        ));
-    }
-
-    // Rule B: Head crop (subject bounds or mask top near 0)
-    if let Some(primary) = frame.primary_subject() {
-        if primary.bounds.min_y() < 0.01 {
-            findings.push(Finding::new(
-                "crop.head",
-                Severity::Critical,
-                Audience::Photographer,
-                Action::TiltUp,
-                "tilt_up",
-            ));
-        }
-
-        // Rule C: Placement (center deviation)
-        let center_x = primary.bounds.center().x;
-        if (center_x - 0.5).abs() > 0.15 {
-            let is_left = center_x < 0.5;
-            findings.push(Finding::new(
-                "placement.center",
-                Severity::Minor,
-                Audience::Photographer,
-                if is_left {
-                    Action::PanLeft
-                } else {
-                    Action::PanRight
-                },
-                if is_left { "pan_left" } else { "pan_right" },
-            ));
-        }
-    }
-
-    findings
+/// Evaluates composition rules on a single frame using the default RulesEngine.
+pub fn evaluate_frame(frame: &Frame, light: Option<&LightContext>) -> Vec<Finding> {
+    let engine = RulesEngine::default_engine();
+    engine.evaluate(frame, light)
 }
 
 #[cfg(test)]

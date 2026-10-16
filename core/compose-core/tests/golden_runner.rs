@@ -82,13 +82,22 @@ fn test_all_golden_vectors() {
                 );
             }
 
+            if test_case.expected_findings.is_empty() {
+                assert!(
+                    actual_findings.is_empty(),
+                    "Case '{}': expected 0 findings (good to shoot), but got: {:?}",
+                    test_case.id,
+                    actual_findings
+                );
+            }
+
             count += 1;
         }
     }
 
     assert!(
-        count >= 3,
-        "Expected at least 3 golden test cases to run, ran {}",
+        count >= 10,
+        "Expected at least 10 golden test cases to run, ran {}",
         count
     );
     println!("Successfully ran {} golden test vectors!", count);

@@ -1,0 +1,52 @@
+{
+  "id": "009_multi_subject_unbalanced",
+  "description": "Two non-occluded subjects are grouped entirely on the left side of frame",
+  "input": {
+    "frame": {
+      "t": 9.0,
+      "subjects": [
+        {
+          "id": 1,
+          "bounds": { "x": 0.05, "y": 0.20, "width": 0.20, "height": 0.60 },
+          "joints": {},
+          "facing": "Frontal",
+          "shot_type": "HalfBody",
+          "confidence": 0.95,
+          "mask_summary": null
+        },
+        {
+          "id": 2,
+          "bounds": { "x": 0.28, "y": 0.20, "width": 0.20, "height": 0.60 },
+          "joints": {},
+          "facing": "Frontal",
+          "shot_type": "HalfBody",
+          "confidence": 0.93,
+          "mask_summary": null
+        }
+      ],
+      "primary_subject_index": 0,
+      "posture": {
+        "roll_deg": 0.0,
+        "pitch_deg": 0.0,
+        "elevation_deg": 0.0
+      },
+      "camera": {
+        "focal_length_mm": 24.0,
+        "hfov_deg": 73.7
+      },
+      "exposure": {
+        "iso": 100.0,
+        "shutter_speed_sec": 0.002,
+        "ev": 12.0
+      }
+    },
+    "light": null
+  },
+  "expected_findings": [
+    {
+      "id": "multi.unbalanced",
+      "severity": "Minor",
+      "hint_key": "pan_left"
+    }
+  ]
+}

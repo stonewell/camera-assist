@@ -64,6 +64,19 @@ jobs:
       - name: Verify App Clip Architecture & Size Ceiling
         run: python3 scripts/check-appclip-size.py
 
+      - name: Swift Package Parity & Unit Tests
+        run: ./scripts/run-swift-tests.sh
+
+      - name: Audit Desktop Image Decoders (Spike R3)
+        run: python3 scripts/audit-image-decoders.py
+
+      - name: Evaluate 24MP Capture Quality SLA (Spike #1)
+        run: python3 scripts/evaluate-capture-quality.py --self-test
+
+      - name: Build XCFramework Artifacts (macOS only)
+        if: matrix.os == 'macos-14'
+        run: ./scripts/build-xcframework.sh
+
   license-audit:
     name: Cargo-Deny License & Advisory Audit
     runs-on: ubuntu-latest

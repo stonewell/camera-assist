@@ -1,0 +1,4 @@
+module compose_ffiFFI {
+    header "compose_ffiFFI.h"
+    export *
+}

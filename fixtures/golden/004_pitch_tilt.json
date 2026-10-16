@@ -1,0 +1,43 @@
+{
+  "id": "004_pitch_tilt",
+  "description": "Camera is tilted vertically (pitch = -14.0 deg) causing severe perspective keystoning",
+  "input": {
+    "frame": {
+      "t": 4.0,
+      "subjects": [
+        {
+          "id": 1,
+          "bounds": { "x": 0.35, "y": 0.15, "width": 0.3, "height": 0.7 },
+          "joints": {},
+          "facing": "Frontal",
+          "shot_type": "HalfBody",
+          "confidence": 0.95,
+          "mask_summary": null
+        }
+      ],
+      "primary_subject_index": 0,
+      "posture": {
+        "roll_deg": 0.2,
+        "pitch_deg": -14.0,
+        "elevation_deg": -14.0
+      },
+      "camera": {
+        "focal_length_mm": 24.0,
+        "hfov_deg": 73.7
+      },
+      "exposure": {
+        "iso": 100.0,
+        "shutter_speed_sec": 0.002,
+        "ev": 12.0
+      }
+    },
+    "light": null
+  },
+  "expected_findings": [
+    {
+      "id": "tilt.vertical",
+      "severity": "Major",
+      "hint_key": "hold_vertical"
+    }
+  ]
+}
