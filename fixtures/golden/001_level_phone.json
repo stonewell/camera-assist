@@ -1,0 +1,57 @@
+{
+  "id": "001_level_phone",
+  "description": "Camera is tilted clockwise beyond threshold (roll = 3.5 deg)",
+  "input": {
+    "frame": {
+      "t": 1.0,
+      "subjects": [
+        {
+          "id": 1,
+          "bounds": { "x": 0.35, "y": 0.15, "width": 0.3, "height": 0.7 },
+          "joints": {
+            "Nose": {
+              "joint_type": "Nose",
+              "point": { "x": 0.5, "y": 0.25 },
+              "confidence": 0.95
+            }
+          },
+          "facing": "Frontal",
+          "shot_type": "HalfBody",
+          "confidence": 0.98,
+          "mask_summary": null
+        }
+      ],
+      "primary_subject_index": 0,
+      "posture": {
+        "roll_deg": 3.5,
+        "pitch_deg": 0.0,
+        "elevation_deg": 0.0
+      },
+      "camera": {
+        "focal_length_mm": 24.0,
+        "hfov_deg": 73.7
+      },
+      "exposure": {
+        "iso": 100.0,
+        "shutter_speed_sec": 0.002,
+        "ev": 12.0
+      }
+    },
+    "light": {
+      "direction": "Front",
+      "quality": "Soft",
+      "sun_azimuth_deg": null,
+      "sun_elevation_deg": null,
+      "face_to_bg_ratio": 1.0,
+      "ev": 12.0,
+      "confidence": 0.9
+    }
+  },
+  "expected_findings": [
+    {
+      "id": "tilt.level",
+      "severity": "Major",
+      "hint_key": "rotate_ccw"
+    }
+  ]
+}

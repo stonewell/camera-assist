@@ -1,0 +1,48 @@
+# cargo-deny configuration for Camera Assist core Rust workspace
+# See https://embarkstudios.github.io/cargo-deny/ for syntax documentation.
+
+[advisories]
+version = 2
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-DFS-2016",
+    "ISC",
+    "OpenSSL",
+    "CC0-1.0",
+]
+deny = [
+    "GPL-1.0",
+    "GPL-2.0",
+    "GPL-3.0",
+    "AGPL-3.0",
+    "SSPL",
+]
+
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [
+    { path = "LICENSE", hash = 0xbd0eed23 }
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+deny = []
+skip = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,0 +1,50 @@
+# Rust / Cargo
+target/
+**/target/
+Cargo.lock.backup
+**/*.rs.bk
+
+# Xcode / Apple
+build/
+DerivedData/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+*.xcuserdatad/
+xcuserdata/
+*.xccheckout
+*.moved-aside
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+
+# Operating Systems
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Evaluation Datasets & Logs (Large Binaries)
+fixtures/eval-dataset/
+*.capturelog
+*.log
+
+# Environment & Temp
+.env
+.env.local
+*.tmp

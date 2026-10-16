@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "level":     { "enterDeg": 2.5, "exitDeg": 1.0, "criticalDeg": 5.0, "uiGreenDeg": 1.0 },
+  "tilt":      { "enterDeg": 10.0, "exitDeg": 6.0 },
+  "head":      { "maskTopEps": 0.005, "headZoneEyeMultiple": 1.2, "noseNeckFactor": 0.9 },
+  "limbCut":   { "jointZone": 0.18, "minWristConf": 0.5, "extendRatio": { "leg": 1.0, "arm": 0.9 } },
+  "feet":      { "enterGap": 0.08, "exitGap": 0.05, "footLenRatio": 0.035 },
+  "headroom":  { "closeUp": [0.02, 0.12], "halfBody": [0.04, 0.18], "fullBody": [0.04, 0.20] },
+  "leadRoom":  { "minYaw": 0.35, "enterRatio": 1.2, "exitRatio": 1.5 },
+  "placement": { "frontalMaxYaw": 0.15, "centerTol": 0.05, "thirdTol": 0.06 },
+  "scale":     { "fullBody": [0.50, 0.88], "environmentalMin": 0.12 },
+  "edge":      { "minMargin": 0.03 },
+  "shotType":  { "environmentalEnter": 0.30, "environmentalExit": 0.36, "switchHold": 0.4, "ankleLostHold": 0.5 },
+  "light": {
+    "ev": { "lowLight": 7.0, "indoorMax": 10.0, "shadeMax": 12.5, "directMin": 13.5 },
+    "backlitFaceRatio": 0.45,
+    "overcastCloudCover": 0.8,
+    "topLightElevation": 55.0,
+    "sideHarshElevation": 20.0,
+    "sunInFrameMaxElevation": 30.0,
+    "goldenHour": [-4.0, 6.0],
+    "blueHour": [-6.0, -4.0],
+    "orbitTarget": { "toBacklit": 20.0, "toSide": 70.0 },
+    "goldenHourSoonMinutes": 45
+  },
+  "distance": {
+    "distortion": { "closeUpMaxM": 1.0, "halfBodyMaxM": 1.5, "wideMaxZoom": 1.2 },
+    "ultraWideEdge": 0.2,
+    "fillMaxM": 3.0,
+    "stepLengthM": 0.7,
+    "defaultHeightM": 1.65,
+    "ipdM": 0.063,
+    "minConfidence": 0.6
+  },
+  "autoSettings": {
+    "biasBacklit": 0.7,
+    "biasBacklitMax": 1.3,
+    "biasFront": -0.3,
+    "biasOvercast": 0.3,
+    "biasSnow": 0.7,
+    "biasSilhouette": -1.0,
+    "biasRampEVPerSec": 1.0,
+    "warmKeepKelvin": 5200
+  },
+  "arbiter": {
+    "enterDelay": { "critical": 0.25, "major": 0.4, "minor": 0.7 },
+    "enterDelayOverride": { "light.*": 1.0 },
+    "exitHold": 0.3,
+    "minShow": 1.2,
+    "ignoreAfter": 5.0,
+    "snoozeFor": 20.0,
+    "motionMute": 1.2,
+    "goodHold": 0.6
+  },
+  "stranger": {
+    "registrationHz": 10,
+    "homographyHz": 3,
+    "aligned":   { "offset": 0.04, "rollDeg": 2.0, "pitchDeg": 3.0, "scale": 0.08 },
+    "unaligned": { "offset": 0.07, "rollDeg": 3.5, "pitchDeg": 5.0, "scale": 0.12 },
+    "slotMinIoU": 0.5,
+    "readyHold": 0.5,
+    "burstCount": 3,
+    "autoBurstInterval": 1.5,
+    "maxAutoBursts": 5,
+    "exitLongPress": 2.0
+  },
+  "voice": {
+    "minInterval": 2.5,
+    "repeatAfter": 6.0,
+    "maxRepeats": 1,
+    "captureQuietWindow": 1.5,
+    "rate": 0.52,
+    "speakGood": true
+  },
+  "still": {
+    "tiltMinDeg": 1.5,
+    "tiltMaxAutoDeg": 8.0,
+    "keystoneMinConvergeDeg": 3.0,
+    "cropMinKeepRatio": 0.5,
+    "cropAspects": ["original", "4:3"],
+    "horizonMinConfidence": 0.6
+  },
+  "backendOverrides": {
+    "vision": {},
+    "onnx": {
+      "limbCut": { "minWristConf": 0.4 },
+      "head": { "noseNeckFactor": 1.0 }
+    }
+  }
+}

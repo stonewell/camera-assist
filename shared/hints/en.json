@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "hints": {
+    "rotate_cw": {
+      "primary": "Rotate clockwise slightly",
+      "secondary": "Horizon tilted left",
+      "spoken": "Rotate clockwise"
+    },
+    "rotate_ccw": {
+      "primary": "Rotate counter-clockwise",
+      "secondary": "Horizon tilted right",
+      "spoken": "Rotate counter-clockwise"
+    },
+    "hold_vertical": {
+      "primary": "Hold phone upright",
+      "secondary": "Avoid perspective distortion",
+      "spoken": "Hold upright"
+    },
+    "lower_and_vertical": {
+      "primary": "Lower phone, hold upright",
+      "secondary": "Feet near bottom edge for longer legs",
+      "spoken": "Lower phone and level"
+    },
+    "step_back": {
+      "primary": "Step back",
+      "secondary": "Subject cropped or too close",
+      "spoken": "Step back"
+    },
+    "step_forward": {
+      "primary": "Step forward",
+      "secondary": "Subject too small in frame",
+      "spoken": "Step forward"
+    },
+    "pan_left": {
+      "primary": "Pan left a bit",
+      "secondary": "Leave room in facing direction",
+      "spoken": "Pan left"
+    },
+    "pan_right": {
+      "primary": "Pan right a bit",
+      "secondary": "Leave room in facing direction",
+      "spoken": "Pan right"
+    },
+    "tilt_down": {
+      "primary": "Tilt down slightly",
+      "secondary": "Too much headroom",
+      "spoken": "Tilt down"
+    },
+    "tilt_up": {
+      "primary": "Tilt up slightly",
+      "secondary": "Head too close to top edge",
+      "spoken": "Tilt up"
+    },
+    "switch_zoom_2x": {
+      "primary": "Switch to 2x, step back",
+      "secondary": "Avoid wide-angle facial distortion",
+      "spoken": "Switch to 2x"
+    },
+    "enable_fill": {
+      "primary": "Tap to fill light",
+      "secondary": "Subject face is backlit and dark",
+      "spoken": "Enable fill light"
+    },
+    "clean_lens": {
+      "primary": "Clean your camera lens",
+      "secondary": "Smudged lens causes haze and glare",
+      "spoken": "Clean lens"
+    },
+    "good": {
+      "primary": "Great composition, take the shot",
+      "secondary": "",
+      "spoken": "Ready, shoot"
+    }
+  }
+}

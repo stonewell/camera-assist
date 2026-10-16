@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GoldenTestVector",
+  "description": "Cross-platform golden test case format for Camera Assist composition rule engine",
+  "type": "object",
+  "required": [
+    "id",
+    "description",
+    "input",
+    "expected_findings"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "input": {
+      "type": "object",
+      "required": [
+        "frame"
+      ],
+      "properties": {
+        "frame": {
+          "type": "object"
+        },
+        "light": {
+          "type": "object"
+        }
+      }
+    },
+    "expected_findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "severity"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "Good",
+              "Minor",
+              "Major",
+              "Critical"
+            ]
+          },
+          "hint_key": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

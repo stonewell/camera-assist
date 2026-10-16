@@ -1,0 +1,22 @@
+[package]
+name = "compose-ffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "UniFFI bindings for compose-core"
+
+[lib]
+crate-type = ["lib", "staticlib", "cdylib"]
+name = "compose_ffi"
+
+[dependencies]
+compose-core = { path = "../compose-core" }
+uniffi = { version = "0.28", default-features = false }
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[bench]]
+name = "ffi_bench"
+harness = false

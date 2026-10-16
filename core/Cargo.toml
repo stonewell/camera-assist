@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "compose-core",
+    "compose-ffi",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Camera Assist Team"]
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive", "std"] }
+serde_json = { version = "1.0", features = ["std"] }
+thiserror = "2.0"

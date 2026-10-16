@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "hints": {
+    "rotate_cw": {
+      "primary": "手机顺时针转一点",
+      "secondary": "画面向左歪了",
+      "spoken": "手机顺时针转"
+    },
+    "rotate_ccw": {
+      "primary": "手机逆时针转一点",
+      "secondary": "画面向右歪了",
+      "spoken": "手机逆时针转"
+    },
+    "hold_vertical": {
+      "primary": "手机拿竖直",
+      "secondary": "避免人体和建筑透视变形",
+      "spoken": "手机拿正"
+    },
+    "lower_and_vertical": {
+      "primary": "手机放低、保持竖直",
+      "secondary": "脚贴底边更显腿长",
+      "spoken": "手机放低拿正"
+    },
+    "step_back": {
+      "primary": "后退一步",
+      "secondary": "给人物留出更多空间",
+      "spoken": "后退一步"
+    },
+    "step_forward": {
+      "primary": "往前走一步",
+      "secondary": "主体在画面中太小",
+      "spoken": "往前走一步"
+    },
+    "pan_left": {
+      "primary": "镜头往左移一点",
+      "secondary": "为视线方向留出留白",
+      "spoken": "镜头往左"
+    },
+    "pan_right": {
+      "primary": "镜头往右移一点",
+      "secondary": "为视线方向留出留白",
+      "spoken": "镜头往右"
+    },
+    "tilt_down": {
+      "primary": "镜头往下移一点",
+      "secondary": "头顶上方留白过多",
+      "spoken": "镜头往下"
+    },
+    "tilt_up": {
+      "primary": "镜头往上抬一点",
+      "secondary": "头顶上方留白太挤",
+      "spoken": "镜头往上"
+    },
+    "switch_zoom_2x": {
+      "primary": "切到 2×，后退几步",
+      "secondary": "离太近脸部会有透视畸变",
+      "spoken": "切二倍后退"
+    },
+    "enable_fill": {
+      "primary": "点这里补光",
+      "secondary": "逆光人物脸部偏暗",
+      "spoken": "开启补光"
+    },
+    "clean_lens": {
+      "primary": "请擦拭相机镜头",
+      "secondary": "镜头脏污会导致画面发雾眩光",
+      "spoken": "擦拭镜头"
+    },
+    "good": {
+      "primary": "构图不错，可以拍",
+      "secondary": "",
+      "spoken": "好，拍吧"
+    }
+  }
+}

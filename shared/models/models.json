@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "audit_policy": {
+    "allowed_licenses": [
+      "Apache-2.0",
+      "MIT",
+      "BSD-2-Clause",
+      "BSD-3-Clause"
+    ],
+    "prohibited_licenses": [
+      "GPL-2.0",
+      "GPL-3.0",
+      "AGPL-3.0",
+      "SSPL",
+      "CC-BY-NC-4.0"
+    ]
+  },
+  "models": [
+    {
+      "id": "rtmpose-m",
+      "name": "RTMPose Medium",
+      "task": "pose_estimation",
+      "upstream_repo": "https://github.com/open-mmlab/mmpose",
+      "license": "Apache-2.0",
+      "status": "approved",
+      "onnx_filename": "rtmpose_m_coco_256x192.onnx",
+      "input_resolution": [256, 192],
+      "parameters_m": 13.6,
+      "gflops": 0.71,
+      "commercial_use_permitted": true,
+      "notes": "Primary pose estimator for desktop Photo Review app."
+    },
+    {
+      "id": "ultraface-slim",
+      "name": "UltraFace Slim 320",
+      "task": "face_detection",
+      "upstream_repo": "https://github.com/Linzaer/Ultra-Light-Fast-Generic-Face-Detector-1MB",
+      "license": "MIT",
+      "status": "approved",
+      "onnx_filename": "version-slim-320.onnx",
+      "input_resolution": [320, 240],
+      "parameters_m": 1.2,
+      "gflops": 0.18,
+      "commercial_use_permitted": true,
+      "notes": "Lightweight face detector for fast anchor and facing estimation."
+    },
+    {
+      "id": "fast-lsd",
+      "name": "Fast Line Segment Detector",
+      "task": "line_segment_detection",
+      "upstream_repo": "https://github.com/iago-suarez/wireframe",
+      "license": "BSD-3-Clause",
+      "status": "approved",
+      "onnx_filename": "fast_lsd_512x512.onnx",
+      "input_resolution": [512, 512],
+      "parameters_m": 2.4,
+      "gflops": 1.25,
+      "commercial_use_permitted": true,
+      "notes": "Vanishing point and horizon line extraction for architectural composition rules."
+    },
+    {
+      "id": "efficientvit-seg-l0",
+      "name": "EfficientViT Segmentor L0",
+      "task": "instance_segmentation",
+      "upstream_repo": "https://github.com/mit-han-lab/efficientvit",
+      "license": "Apache-2.0",
+      "status": "approved",
+      "onnx_filename": "efficientvit_seg_l0.onnx",
+      "input_resolution": [512, 512],
+      "parameters_m": 3.8,
+      "gflops": 2.1,
+      "commercial_use_permitted": true,
+      "notes": "Permissive Apache-2.0 human segmentation model replacing AGPL alternatives."
+    },
+    {
+      "id": "yolov8-seg",
+      "name": "YOLOv8 Segmentation",
+      "task": "instance_segmentation",
+      "upstream_repo": "https://github.com/ultralytics/ultralytics",
+      "license": "AGPL-3.0",
+      "status": "rejected",
+      "onnx_filename": "yolov8n-seg.onnx",
+      "input_resolution": [640, 640],
+      "parameters_m": 3.2,
+      "gflops": 12.0,
+      "commercial_use_permitted": false,
+      "rejection_reason": "AGPL-3.0 license imposes infectious copyleft obligations incompatible with proprietary desktop distribution without paid commercial license.",
+      "replacement_id": "efficientvit-seg-l0"
+    }
+  ]
+}
