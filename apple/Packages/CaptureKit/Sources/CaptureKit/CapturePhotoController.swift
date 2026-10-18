@@ -47,7 +47,7 @@ public final class CapturePhotoController: NSObject, @unchecked Sendable {
 
     /// Trigger 24MP capture (via `AVCapturePhotoOutput` when attached, or mock pipeline in CI/Simulator).
     public func capturePhoto(from photoOutput: AnyObject? = nil) async throws -> PhotoCaptureResult {
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        #if canImport(AVFoundation) && os(iOS) && !targetEnvironment(simulator)
         if let output = photoOutput as? AVCapturePhotoOutput {
             return try await withCheckedThrowingContinuation { continuation in
                 self.activeContinuation = continuation
@@ -86,7 +86,7 @@ public final class CapturePhotoController: NSObject, @unchecked Sendable {
     }
 }
 
-#if canImport(AVFoundation) && !targetEnvironment(simulator)
+#if canImport(AVFoundation) && os(iOS) && !targetEnvironment(simulator)
 extension CapturePhotoController: AVCapturePhotoCaptureDelegate {
     public func photoOutput(
         _ output: AVCapturePhotoOutput,

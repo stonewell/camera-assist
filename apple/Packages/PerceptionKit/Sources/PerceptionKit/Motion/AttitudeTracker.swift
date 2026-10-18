@@ -1,7 +1,7 @@
 import Foundation
 import CoreGraphics
 
-#if canImport(CoreMotion)
+#if canImport(CoreMotion) && !os(macOS)
 import CoreMotion
 #endif
 
@@ -53,7 +53,7 @@ public final class AttitudeTracker: @unchecked Sendable {
     private let pitchFilter: OneEuroFilter
     public var captureAngleDeg: CGFloat = 90.0
 
-    #if canImport(CoreMotion)
+    #if canImport(CoreMotion) && !os(macOS)
     private let motionManager = CMMotionManager()
     private let motionQueue: OperationQueue = {
         let q = OperationQueue()
@@ -104,7 +104,7 @@ public final class AttitudeTracker: @unchecked Sendable {
         )
     }
 
-    #if canImport(CoreMotion)
+    #if canImport(CoreMotion) && !os(macOS)
     /// Starts live 60Hz CoreMotion device-motion updates and invokes `onReading` on the motion queue.
     public func startLiveMotionUpdates(onReading: @escaping @Sendable (MotionReading) -> Void) {
         guard motionManager.isDeviceMotionAvailable else { return }

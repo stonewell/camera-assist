@@ -37,7 +37,16 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
         "x86_64-apple-darwin"
     )
 
+    # Stage public C headers and modulemap for xcframework
+    HEADERS_DIR="${CORE_DIR}/target/xcframework-headers"
+    rm -rf "${HEADERS_DIR}"
+    mkdir -p "${HEADERS_DIR}"
+    cp "${GENERATED_DIR}/compose_ffiFFI.h" "${HEADERS_DIR}/"
+    cp "${GENERATED_DIR}/compose_ffiFFI.modulemap" "${HEADERS_DIR}/module.modulemap"
+
     for TARGET in "${TARGETS[@]}"; do
+        echo "--> Ensuring rust target ${TARGET} is installed..."
+        rustup target add "${TARGET}" 2>/dev/null || true
         echo "--> Building staticlib for ${TARGET}..."
         (cd "${CORE_DIR}" && cargo build --release --target "${TARGET}" -p compose-ffi)
     done
@@ -64,11 +73,11 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
 
     xcodebuild -create-xcframework \
         -library "${CORE_DIR}/target/aarch64-apple-ios/release/libcompose_ffi.a" \
-        -headers "${GENERATED_DIR}" \
+        -headers "${HEADERS_DIR}" \
         -library "${SIM_DIR}/libcompose_ffi.a" \
-        -headers "${GENERATED_DIR}" \
+        -headers "${HEADERS_DIR}" \
         -library "${MAC_DIR}/libcompose_ffi.a" \
-        -headers "${GENERATED_DIR}" \
+        -headers "${HEADERS_DIR}" \
         -output "${FRAMEWORKS_DIR}/ComposeCore.xcframework"
 
     echo "✓ ComposeCore.xcframework assembled successfully in ${FRAMEWORKS_DIR}/ComposeCore.xcframework"

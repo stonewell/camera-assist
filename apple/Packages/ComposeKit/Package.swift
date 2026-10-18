@@ -20,30 +20,12 @@ let package = Package(
         .target(
             name: "ComposeKit",
             dependencies: [],
-            path: "Sources/ComposeKit",
-            swiftSettings: [
-                .unsafeFlags([
-                    "-I", "Sources/ComposeKit/Generated",
-                    "-Xcc", "-fmodule-map-file=Sources/ComposeKit/Generated/compose_ffiFFI.modulemap"
-                ])
-            ]
+            path: "Sources/ComposeKit"
         ),
         .testTarget(
             name: "ComposeKitTests",
             dependencies: ["ComposeKit"],
-            path: "Tests/ComposeKitTests",
-            swiftSettings: [
-                .unsafeFlags([
-                    "-I", "Sources/ComposeKit/Generated",
-                    "-Xcc", "-fmodule-map-file=Sources/ComposeKit/Generated/compose_ffiFFI.modulemap"
-                ])
-            ],
-            linkerSettings: [
-                .unsafeFlags([
-                    "-L", "../../../core/target/debug",
-                    "-lcompose_ffi"
-                ])
-            ]
+            path: "Tests/ComposeKitTests"
         ),
     ]
 )
