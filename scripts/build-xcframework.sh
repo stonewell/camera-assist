@@ -23,6 +23,28 @@ OS_NAME="$(uname -s)"
 echo "Host Operating System: ${OS_NAME}"
 
 if [[ "${OS_NAME}" == "Darwin" ]]; then
+    run_step() {
+        local name="$1"
+        shift
+        echo "------------------------------------------------------------------"
+        echo "==> ${name}..."
+        echo "------------------------------------------------------------------"
+        local log_file
+        log_file="$(mktemp)"
+        if ! "$@" > "${log_file}" 2>&1; then
+            cat "${log_file}"
+            if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+                local short_err
+                short_err="$(tail -n 25 "${log_file}" | tr '\n' ' ')"
+                echo "::error title=${name} Failed::${short_err}"
+            fi
+            rm -f "${log_file}"
+            return 1
+        fi
+        cat "${log_file}"
+        rm -f "${log_file}"
+    }
+
     if ! command -v xcodebuild >/dev/null 2>&1; then
         echo "Error: xcodebuild not found. Xcode is required to assemble XCFramework." >&2
         exit 1
@@ -32,7 +54,7 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
     TARGETS=(
         "aarch64-apple-ios"
         "aarch64-apple-ios-sim"
-        "x86_64-apple-ios-sim"
+        "x86_64-apple-ios"
         "aarch64-apple-darwin"
         "x86_64-apple-darwin"
     )
@@ -54,15 +76,15 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
     # Assemble fat simulator library
     SIM_DIR="${CORE_DIR}/target/sim-fat"
     mkdir -p "${SIM_DIR}"
-    lipo -create \
+    run_step "Assemble Fat iOS Simulator Archive" lipo -create \
         "${CORE_DIR}/target/aarch64-apple-ios-sim/release/libcompose_ffi.a" \
-        "${CORE_DIR}/target/x86_64-apple-ios-sim/release/libcompose_ffi.a" \
+        "${CORE_DIR}/target/x86_64-apple-ios/release/libcompose_ffi.a" \
         -output "${SIM_DIR}/libcompose_ffi.a"
 
     # Assemble fat macOS library
     MAC_DIR="${CORE_DIR}/target/mac-fat"
     mkdir -p "${MAC_DIR}"
-    lipo -create \
+    run_step "Assemble Fat macOS Archive" lipo -create \
         "${CORE_DIR}/target/aarch64-apple-darwin/release/libcompose_ffi.a" \
         "${CORE_DIR}/target/x86_64-apple-darwin/release/libcompose_ffi.a" \
         -output "${MAC_DIR}/libcompose_ffi.a"
@@ -71,7 +93,7 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
     rm -rf "${FRAMEWORKS_DIR}/ComposeCore.xcframework"
     mkdir -p "${FRAMEWORKS_DIR}"
 
-    xcodebuild -create-xcframework \
+    run_step "Create XCFramework" xcodebuild -create-xcframework \
         -library "${CORE_DIR}/target/aarch64-apple-ios/release/libcompose_ffi.a" \
         -headers "${HEADERS_DIR}" \
         -library "${SIM_DIR}/libcompose_ffi.a" \
