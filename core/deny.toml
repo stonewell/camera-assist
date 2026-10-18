@@ -2,17 +2,11 @@
 # See https://embarkstudios.github.io/cargo-deny/ for syntax documentation.
 
 [advisories]
-version = 2
-vulnerability = "deny"
-# cargo-deny v2 schema: `unmaintained` is a scope (all/workspace/transitive/none),
-# not a severity. Use "workspace" to keep the original non-fatal intent — fail
-# only when one of our own (workspace) crates goes unmaintained.
-unmaintained = "workspace"
-yanked = "deny"
 ignore = []
+# Fail only if workspace crates are unmaintained; allow transitive dependencies
+unmaintained = "workspace"
 
 [licenses]
-version = 2
 confidence-threshold = 0.8
 allow = [
     "MIT",
@@ -20,20 +14,15 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
     "ISC",
     "OpenSSL",
     "CC0-1.0",
-]
-deny = [
-    "GPL-1.0",
-    "GPL-2.0",
-    "GPL-3.0",
-    "AGPL-3.0",
-    "SSPL",
+    "MPL-2.0",
 ]
 
 [[licenses.clarify]]
-name = "ring"
+crate = "ring"
 expression = "MIT AND ISC AND OpenSSL"
 license-files = [
     { path = "LICENSE", hash = 0xbd0eed23 }

@@ -278,7 +278,7 @@ void uniffi_compose_ffi_fn_method_liveengine_set_focus(void*_Nonnull ptr, RustBu
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_STEP_JSON
 #define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_STEP_JSON
-RustBuffer uniffi_compose_ffi_fn_method_liveengine_step_json(void*_Nonnull ptr, RustBuffer frame_json, RustBuffer light_json, double _t, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_compose_ffi_fn_method_liveengine_step_json(void*_Nonnull ptr, RustBuffer frame_json, RustBuffer light_json, double t, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_VERSION

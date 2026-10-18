@@ -19,10 +19,14 @@ public actor LiveComposer {
         }
     }
 
+    private init(mockMode: Bool) {
+        self.engine = nil
+        self.isMockMode = mockMode
+    }
+
     /// Explicitly enable mock mode for UI previews and unit tests without native binary.
     public static func createMock() -> LiveComposer {
-        let composer = LiveComposer()
-        return composer
+        return LiveComposer(mockMode: true)
     }
 
     /// Process a frame through the Rust composition engine or Swift mock fallback.
@@ -31,7 +35,7 @@ public actor LiveComposer {
         lightJson: String? = nil,
         timestamp: Double = 0.0
     ) throws -> ComposeOutput {
-        if let eng = self.engine {
+        if !self.isMockMode, let eng = self.engine {
             let ffiOut = try eng.stepJson(frameJson: frameJson, lightJson: lightJson, t: timestamp)
             return ComposeOutput(
                 activeFindingId: ffiOut.activeFindingId,

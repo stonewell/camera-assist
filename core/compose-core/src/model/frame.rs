@@ -65,6 +65,12 @@ impl CameraIntrinsics {
     }
 }
 
+impl Default for CameraIntrinsics {
+    fn default() -> Self {
+        Self::default_main_lens()
+    }
+}
+
 /// Camera sensor exposure metrics.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ExposureSummary {
@@ -83,14 +89,24 @@ impl ExposureSummary {
     }
 }
 
+impl Default for ExposureSummary {
+    fn default() -> Self {
+        Self::daylight()
+    }
+}
+
 /// A complete frame analyzed by the perception pipeline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Frame {
     pub t: f64,
+    #[serde(default)]
     pub subjects: Vec<Subject>,
+    #[serde(default)]
     pub primary_subject_index: Option<usize>,
     pub posture: Posture,
+    #[serde(default)]
     pub camera: CameraIntrinsics,
+    #[serde(default)]
     pub exposure: ExposureSummary,
 }
 

@@ -887,7 +887,7 @@ private var initializationResult: InitializationResult = {
     if (uniffi_compose_ffi_checksum_method_liveengine_set_focus() != 63041) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_compose_ffi_checksum_method_liveengine_step_json() != 48816) {
+    if (uniffi_compose_ffi_checksum_method_liveengine_step_json() != 16030) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_compose_ffi_checksum_method_liveengine_version() != 8844) {

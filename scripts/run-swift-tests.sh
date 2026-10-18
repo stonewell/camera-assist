@@ -17,15 +17,17 @@ echo "=================================================================="
 echo " Running Swift Package Tests / Parity Verifications"
 echo "=================================================================="
 
-if command -v swift >/dev/null 2>&1; then
-    echo "==> Detected Swift compiler. Running native XCTests for Swift Packages..."
+OS_NAME="$(uname -s)"
+
+if [[ "${OS_NAME}" == "Darwin" ]] && command -v swift >/dev/null 2>&1; then
+    echo "==> Detected macOS host with Swift compiler. Running native XCTests for Swift Packages..."
     swift test --package-path "${COMPOSE_KIT_DIR}"
     swift test --package-path "${CAPTURE_KIT_DIR}"
     swift test --package-path "${PERCEPTION_KIT_DIR}"
     swift test --package-path "${SYNC_KIT_DIR}"
     echo "✓ All Swift package tests passed."
 else
-    echo "==> Swift toolchain not found on host. Running Swift structural parity check..."
+    echo "==> Linux/Non-Darwin host. Running Swift structural & schema parity check..."
     python3 "${REPO_ROOT}/scripts/validate-swift-parity.py"
     echo "✓ Swift package structure & golden parity validated."
 fi

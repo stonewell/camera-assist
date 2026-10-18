@@ -7,6 +7,10 @@ Cargo.lock.backup
 # Xcode / Apple
 build/
 DerivedData/
+.build/
+**/.build/
+.swiftpm/
+**/.swiftpm/
 *.xcuserstate
 project.xcworkspace/xcuserdata/
 *.xcuserdatad/

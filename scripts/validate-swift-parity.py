@@ -137,7 +137,7 @@ def main() -> int:
         return 1
     print(f"  ✓ Found CameraApp UI component: {debug_hud_file.name}")
 
-    # 7. Check ComposeKit Tests
+    # 7. Check ComposeKit & SyncKit Tests
     tests_dir = compose_kit_dir / "Tests" / "ComposeKitTests"
     required_tests = ["GoldenVectorTests.swift", "ConcurrencyTests.swift"]
     for f in required_tests:
@@ -146,6 +146,12 @@ def main() -> int:
             print(f"[FAIL] Missing Swift test file: {fp}", file=sys.stderr)
             return 1
         print(f"  ✓ Found test file: {f}")
+
+    sync_test_file = sync_kit_dir / "Tests" / "SyncKitTests" / "SyncKitTests.swift"
+    if not sync_test_file.is_file():
+        print(f"[FAIL] Missing SyncKit test file: {sync_test_file}", file=sys.stderr)
+        return 1
+    print("  ✓ Found SyncKit test suite: SyncKitTests.swift")
 
     # 8. Check Golden Vectors integrity against Swift definitions
     print("--- [validate-swift-parity] Checking Golden Vector Coverage ---")
