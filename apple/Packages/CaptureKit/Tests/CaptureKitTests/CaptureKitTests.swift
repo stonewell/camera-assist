@@ -13,12 +13,27 @@ final class CaptureKitTests: XCTestCase {
         XCTAssertTrue(config.enableResponsiveCapture)
     }
 
+    private final class FrameBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _frames: [VideoSampleFrame] = []
+        var frames: [VideoSampleFrame] {
+            lock.lock()
+            defer { lock.unlock() }
+            return _frames
+        }
+        func append(_ frame: VideoSampleFrame) {
+            lock.lock()
+            defer { lock.unlock() }
+            _frames.append(frame)
+        }
+    }
+
     func testCaptureSessionLifecycleAndMockFrame() async throws {
         let manager = CaptureSessionManager()
-        var receivedFrames: [VideoSampleFrame] = []
+        let box = FrameBox()
 
         manager.setFrameHandler { frame in
-            receivedFrames.append(frame)
+            box.append(frame)
         }
 
         try await manager.startSession()
@@ -27,6 +42,7 @@ final class CaptureKitTests: XCTestCase {
         manager.emitMockFrame(timestamp: 100.0)
         manager.emitMockFrame(timestamp: 100.016)
 
+        let receivedFrames = box.frames
         XCTAssertEqual(receivedFrames.count, 2)
         XCTAssertEqual(receivedFrames[0].presentationTimestamp, 100.0)
         XCTAssertTrue(receivedFrames[0].isMock)
