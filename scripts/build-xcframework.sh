@@ -46,9 +46,9 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
 
     for TARGET in "${TARGETS[@]}"; do
         echo "--> Ensuring rust target ${TARGET} is installed..."
-        rustup target add "${TARGET}" 2>/dev/null || true
+        rustup target add "${TARGET}"
         echo "--> Building staticlib for ${TARGET}..."
-        (cd "${CORE_DIR}" && cargo build --release --target "${TARGET}" -p compose-ffi)
+        (cd "${CORE_DIR}" && cargo build --release --target "${TARGET}" -p compose-ffi --lib)
     done
 
     # Assemble fat simulator library
@@ -83,7 +83,7 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
     echo "✓ ComposeCore.xcframework assembled successfully in ${FRAMEWORKS_DIR}/ComposeCore.xcframework"
 else
     echo "==> Running in Linux/CI environment: performing cross-compilation dry-run & static validation."
-    (cd "${CORE_DIR}" && cargo build --release -p compose-ffi)
+    (cd "${CORE_DIR}" && cargo build --release -p compose-ffi --lib)
     
     # Verify generated C headers and modulemap exist
     if [[ -f "${GENERATED_DIR}/compose_ffiFFI.h" && -f "${GENERATED_DIR}/compose_ffi.swift" ]]; then
