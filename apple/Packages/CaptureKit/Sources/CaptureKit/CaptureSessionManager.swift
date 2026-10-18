@@ -75,7 +75,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
 
     /// Start capture session pipeline with 24MP maxPhotoDimensions, prepared settings, and Camera Control sliders.
     public func startSession() async throws {
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        #if canImport(AVFoundation) && os(iOS) && !targetEnvironment(simulator)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             sessionQueue.async { [weak self] in
                 guard let self = self else {
@@ -167,7 +167,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
 
     /// Stop capture session.
     public func stopSession() async {
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        #if canImport(AVFoundation) && os(iOS) && !targetEnvironment(simulator)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             sessionQueue.async { [weak self] in
                 guard let self = self else {
@@ -189,7 +189,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
     /// Switch active lens type or virtual optical zoom factor (`0.5x`, `1.0x`, `2.0x`, `3.0x`).
     public func switchLens(to lens: CameraLensType) async throws {
         self.currentLens = lens
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        #if canImport(AVFoundation) && os(iOS) && !targetEnvironment(simulator)
         sessionQueue.async { [weak self] in
             guard let self = self, let dev = self.activeDevice else { return }
             let targetZoom: CGFloat
@@ -210,7 +210,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
     /// Tap-to-focus and exposure point of interest in normalized device coordinates `[0, 1]`.
     public func focusAndExpose(at devicePoint: CGPoint) {
         self.lastFocusPoint = devicePoint
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        #if canImport(AVFoundation) && os(iOS) && !targetEnvironment(simulator)
         sessionQueue.async { [weak self] in
             guard let dev = self?.activeDevice else { return }
             if (try? dev.lockForConfiguration()) != nil {
@@ -232,7 +232,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
     /// Adjusts camera exposure compensation bias (EV).
     public func setExposureBias(_ ev: Float) {
         self.currentExposureBias = ev
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        #if canImport(AVFoundation) && os(iOS) && !targetEnvironment(simulator)
         sessionQueue.async { [weak self] in
             guard let dev = self?.activeDevice else { return }
             if (try? dev.lockForConfiguration()) != nil {

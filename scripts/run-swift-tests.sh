@@ -21,7 +21,11 @@ OS_NAME="$(uname -s)"
 
 if [[ "${OS_NAME}" == "Darwin" ]] && command -v swift >/dev/null 2>&1; then
     echo "==> Detected macOS host with Swift compiler. Running native XCTests for Swift Packages..."
-    swift test --package-path "${COMPOSE_KIT_DIR}"
+    swift test --package-path "${COMPOSE_KIT_DIR}" \
+        -Xswiftc -I"${COMPOSE_KIT_DIR}/Sources/ComposeKit/Generated" \
+        -Xswiftc -Xcc -Xswiftc -fmodule-map-file="${COMPOSE_KIT_DIR}/Sources/ComposeKit/Generated/compose_ffiFFI.modulemap" \
+        -Xlinker -L"${REPO_ROOT}/core/target/debug" \
+        -Xlinker -lcompose_ffi
     swift test --package-path "${CAPTURE_KIT_DIR}"
     swift test --package-path "${PERCEPTION_KIT_DIR}"
     swift test --package-path "${SYNC_KIT_DIR}"
