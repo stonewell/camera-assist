@@ -81,7 +81,7 @@ public final class PerceptionScheduler: @unchecked Sendable {
         let runLuma = (timestamp - lastLumaTime) >= lumaInterval
         if runLuma { lastLumaTime = timestamp }
 
-        return structScheduledPerceptionTasks(
+        return ScheduledPerceptionTasks(
             runBodyPose: runPose,
             runSegmentationMask: runMask,
             runFaceFallback: runFace,
