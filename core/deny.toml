@@ -4,7 +4,10 @@
 [advisories]
 version = 2
 vulnerability = "deny"
-unmaintained = "warn"
+# cargo-deny v2 schema: `unmaintained` is a scope (all/workspace/transitive/none),
+# not a severity. Use "workspace" to keep the original non-fatal intent — fail
+# only when one of our own (workspace) crates goes unmaintained.
+unmaintained = "workspace"
 yanked = "deny"
 ignore = []
 
