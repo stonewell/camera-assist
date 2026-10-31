@@ -65,6 +65,41 @@ camera-assist/
 
 ---
 
+## 构建与开发指南 (Building with xtool & Cargo)
+
+本项目支持在 Linux 与 macOS 跨平台环境下使用 `xtool` 与 Cargo 进行独立编译与质量验证。
+
+### 环境依赖 (Prerequisites)
+- **Rust Toolchain**: 包含 `cargo` 与 iOS 交叉编译 target (`rustup target add aarch64-apple-ios`)。
+- **xtool**: 跨平台 SwiftPM iOS 编译工具（可在 Linux/macOS 上替代 Xcode 进行 SwiftPM 构建）。
+- **Darwin Swift SDK**: 通过 `xtool sdk status` 确认已安装 iOS SDK。
+- **Python 3**: 用于运行质量门禁与黄金向量校验脚本。
+
+### 常用构建与开发命令 (Commands)
+
+```bash
+# 1. 编译 Rust compose-ffi iOS 静态库
+make rust-ios
+# (或执行 ./scripts/build-rust-ios.sh aarch64-apple-ios)
+
+# 2. 构建路人帮拍 App Clip (纯 Swift，零 Rust 依赖)
+cd apple/CameraAppClip && xtool dev build
+# (或执行 make dev-camera-clip)
+
+# 3. 构建帮拍相机主应用 (CameraApp)
+cd apple/CameraApp && xtool dev build
+# (或执行 make dev-camera-app)
+
+# 4. 生成 UniFFI Swift 绑定与 C 头文件
+make generate-bindings
+
+# 5. 执行全量 10 步质量门禁验收 (包含 Rust 测试、App Clip 隔离与大小检查、黄金测试向量校验)
+./scripts/verify-all.sh
+# (或执行 make verify / make test)
+```
+
+---
+
 ## 核心设计原则
 
 1. **规则唯一实现**：所有构图与光线规则均在 Rust `compose-core` 中实现并经过黄金测试向量验证，保证 iOS 实时端、iOS 复盘端、桌面复盘端的判定逻辑完全一致。
