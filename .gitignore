@@ -4,11 +4,15 @@ target/
 Cargo.lock.backup
 **/*.rs.bk
 
-# Xcode / Apple
+# Xcode / Apple / xtool
 build/
 DerivedData/
 .build/
 **/.build/
+.bsp/
+**/.bsp/
+xtool/
+**/xtool/
 .swiftpm/
 **/.swiftpm/
 *.xcuserstate

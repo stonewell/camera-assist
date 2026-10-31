@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.stonewell.camera-assist.clip</string>
+    <key>CFBundleName</key>
+    <string>CameraAppClip</string>
+    <key>CFBundleDisplayName</key>
+    <string>路人帮拍</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSCameraUsageDescription</key>
+    <string>需要相机权限以协助拍摄</string>
+    <key>NSAppClip</key>
+    <dict>
+        <key>NSAppClipRequestEphemeralUserNotification</key>
+        <false/>
+        <key>NSAppClipRequestLocationConfirmation</key>
+        <false/>
+    </dict>
+</dict>
+</plist>

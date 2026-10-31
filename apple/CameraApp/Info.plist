@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.stonewell.camera-assist</string>
+    <key>CFBundleName</key>
+    <string>CameraApp</string>
+    <key>CFBundleDisplayName</key>
+    <string>帮拍相机</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSCameraUsageDescription</key>
+    <string>需要相机权限以进行实时取景与构图辅助</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>需要相册权限以保存高质量拍摄照片</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>需要相册写入权限以保存拍摄照片</string>
+</dict>
+</plist>
