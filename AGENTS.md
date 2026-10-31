@@ -79,16 +79,22 @@ cd apple/CameraAppClip && xtool dev build
 ```
 Output bundle: `apple/CameraAppClip/xtool/CameraAppClip.app`.
 
-#### 3. Build CameraApp (Main App)
+#### 3. Build CameraApp (Main App) — requires macOS + Xcode
+`make dev-camera-app` depends on the `xcframework` target. `ComposeCore.xcframework` can **only** be assembled on macOS with Xcode (`scripts/build-xcframework.sh` merely does a cross-compilation dry-run on non-Darwin hosts and never emits the artifact). On Linux the `xcframework` target fails fast instead of silently producing a ComposeKit that cannot compile.
+
 ```bash
 # Build Rust static library first
 make rust-ios
 
-# Build application
+# Build application (macOS + Xcode only)
 make dev-camera-app
 # (or cd apple/CameraApp && xtool dev build)
 ```
 Output bundle: `apple/CameraApp/xtool/CameraApp.app`.
+
+> **Linux users**: `make dev-camera-app` is not supported here. Run `make verify` for the structural parity gate (`validate-swift-parity.py`) instead.
+
+**`COMPOSE_REQUIRE_FFI=1`**: hard gate for CI and device builds. When set, `apple/Packages/ComposeKit/Package.swift` calls `fatalError` if `apple/Frameworks/ComposeCore.xcframework` is missing. Without the XCFramework, ComposeKit **fails to compile** — expected, not a bug — because `Generated/compose_ffi.swift` unconditionally references the `compose_ffiFFI` C types/symbols that only the XCFramework headers/modulemap provide. There is no silent mock fallback.
 
 ### Target Configuration (`xtool.yml` & `Info.plist`)
 Both `apple/CameraApp` and `apple/CameraAppClip` contain:
@@ -130,4 +136,4 @@ This script scans all Swift/C source files in `apple/CameraAppClip` and `apple/P
 
 ### ComposeKit Linking Constraint
 
-`ComposeKit` must be linked against the Rust static library (`libcompose_ffi.a`); when it is missing, `LiveComposer` silently falls back to mock mode. Any verification run where `LiveComposer.isMockMode == true` must be treated as **failed** (TASK-01) — mock-mode results are never acceptable as acceptance evidence.
+`ComposeKit` must be linked against the Rust static library via `apple/Frameworks/ComposeCore.xcframework`. When it is missing, ComposeKit does **not** fall back to a mock `LiveComposer`; it fails to compile (missing `compose_ffiFFI` C symbols). `COMPOSE_REQUIRE_FFI=1` turns the missing XCFramework into an explicit manifest-level `fatalError` (TASK-01). Any verification run where `LiveComposer.isMockMode == true` must still be treated as **failed** — mock-mode results are never acceptable as acceptance evidence.

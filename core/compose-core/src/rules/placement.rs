@@ -16,7 +16,7 @@ impl Rule for PlacementRule {
 
         match primary.shot_type {
             ShotType::CloseUp | ShotType::HalfBody | ShotType::FullBody => {
-                let tol = 0.15; // Centering tolerance
+                let tol = ctx.config.placement.center_tol; // Centering tolerance
                 if (center_x - 0.5).abs() > tol {
                     let is_left = center_x < 0.5;
                     Some(Finding::new(

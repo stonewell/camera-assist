@@ -43,15 +43,15 @@ if [[ "${OS_NAME}" == "Darwin" ]] && command -v swift >/dev/null 2>&1; then
         echo "✓ ${name} tests passed."
     }
 
-    echo "==> Building compose-ffi library..."
-    (cd "${REPO_ROOT}/core" && cargo build -p compose-ffi)
+    echo "==> Building ComposeCore.xcframework (iOS device + simulator + macOS)..."
+    # TASK-01: ComposeKit links the Rust static library through this local binary target.
+    "${REPO_ROOT}/scripts/build-xcframework.sh"
 
-    export DYLD_LIBRARY_PATH="${REPO_ROOT}/core/target/debug:${DYLD_LIBRARY_PATH:-}"
+    # Hard gate: the ComposeKit manifest fails fast if the XCFramework is missing, so a
+    # green ComposeKit run can never be a silent mock run.
+    export COMPOSE_REQUIRE_FFI=1
 
-    run_pkg_test "ComposeKit" swift test --package-path "${COMPOSE_KIT_DIR}" \
-        -Xswiftc -I"${COMPOSE_KIT_DIR}/Sources/ComposeKit/Generated" \
-        -Xswiftc -Xcc -Xswiftc -fmodule-map-file="${COMPOSE_KIT_DIR}/Sources/ComposeKit/Generated/compose_ffiFFI.modulemap" \
-        -Xlinker "${REPO_ROOT}/core/target/debug/libcompose_ffi.a"
+    run_pkg_test "ComposeKit" swift test --package-path "${COMPOSE_KIT_DIR}"
 
     run_pkg_test "CaptureKit" swift test --package-path "${CAPTURE_KIT_DIR}"
 
@@ -62,6 +62,8 @@ if [[ "${OS_NAME}" == "Darwin" ]] && command -v swift >/dev/null 2>&1; then
     echo "✓ All Swift package tests passed."
 else
     echo "==> Linux/Non-Darwin host. Running Swift structural & schema parity check..."
+    echo "    NOTE: real linking (ComposeCore.xcframework) and real-engine execution"
+    echo "    (13 golden vectors via 'swift test') require macOS / a physical device."
     python3 "${REPO_ROOT}/scripts/validate-swift-parity.py"
     echo "✓ Swift package structure & golden parity validated."
 fi

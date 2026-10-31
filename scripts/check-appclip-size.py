@@ -19,6 +19,11 @@ FORBIDDEN_PATTERNS = [
     re.compile(r"libcompose_core\.a", re.IGNORECASE),
     re.compile(r"uniffi", re.IGNORECASE),
     re.compile(r"compose_ffi", re.IGNORECASE),
+    # TASK-01: the prebuilt Rust FFI ships as a ComposeCore.xcframework binary target; an
+    # App Clip must never declare or reference it (it must stay 100% pure Swift).
+    re.compile(r"ComposeCore", re.IGNORECASE),
+    re.compile(r"binaryTarget", re.IGNORECASE),
+    re.compile(r"\.xcframework", re.IGNORECASE),
 ]
 
 WARNING_SIZE_BYTES = 8 * 1024 * 1024    # 8 MB Warning threshold

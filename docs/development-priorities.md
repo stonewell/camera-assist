@@ -134,9 +134,9 @@ graph TD
 |---|---|---|---|---|---|
 | **P1-1** | 相机采集 | `CaptureKit`：AVCaptureSession 高画质管线、24MP 输出、RotationCoordinator 对齐与防畸变 | iOS 工程师 A | P0-5 | **部分完成**（TASK-06）：`VideoSampleFrame` 丢弃 `CVPixelBuffer`；`RotationCoordinatorBridge` 无真实 KVO；热节流不降帧 |
 | **P1-2** | 实时感知 | `PerceptionKit`：Vision 人体姿态、人像掩码、人脸检测及 60Hz IMU 运动姿态平滑融合 | iOS 工程师 B | P1-1 | **部分完成**（TASK-07）：`BodyPoseAnalyzer`/`MaskSummarizer` 不执行 Vision 请求；`FrameSyncHub` 最近邻取帧、无插值/EXIF |
-| **P1-3** | 构图规则 | `compose-core`：实现 A 类姿态/水平、B 类人体裁切、C 类画面位置大小、D 类多人站位平衡 | Rust 工程师 + iOS B | P0-2, P0-4 | **A–D 已完成 / E–G 未开始**（TASK-04）；另有 `multi.unbalanced` 排序与 `placement.center_tol` 活缺陷（TASK-03） |
+| **P1-3** | 构图规则 | `compose-core`：实现 A 类姿态/水平、B 类人体裁切、C 类画面位置大小、D 类多人站位平衡 | Rust 工程师 + iOS B | P0-2, P0-4 | **A–D 已完成 / E–G 未开始**（TASK-04）；`multi.unbalanced` 排序与 `placement.center_tol` 硬编码**已由 TASK-03 修复（2026-10-30）** |
 | **P1-4** | 提示仲裁 | `HintArbiter`：实现一次只给一条提示仲裁器（迟滞防抖、抢占、冷却、手持晃动静默） | Rust 核心工程师 | P1-3 | **部分完成**：缺 per-rule `enterDelayOverride`，其余迟滞/冷却/静默机制已实现 |
-| **P1-5** | Swift 封装 | `ComposeKit`：封装 `LiveComposer`，桥接 UniFFI，实现主线程 UI 消费的高性能值类型流 | iOS 工程师 B | P0-3, P1-4 | **部分完成**（TASK-01）：未链接 `libcompose_ffi.a`，失败即静默转 mock |
+| **P1-5** | Swift 封装 | `ComposeKit`：封装 `LiveComposer`，桥接 UniFFI，实现主线程 UI 消费的高性能值类型流 | iOS 工程师 B | P0-3, P1-4 | **部分完成**（TASK-01）：已声明 `.binaryTarget` 链接 `ComposeCore.xcframework`，静默 mock 已移除；macOS 真链接与 `swift test` 待验证 |
 | **P1-6** | 相机 UI | 取景页 UIKit/Core Animation 叠加层：实时单条提示胶囊、动态水平线、站位引导线、触感反馈 | iOS 工程师 A | P1-1, P1-5 | **未开始**（TASK-09）；现仅有调试用 `PerceptionDebugHUD` |
 | **P1-7** | 离线评测 | Swift 版 `compose-eval-vision` 评测流水线，300 张旅拍标注集门禁跑通（精确率 ≥ 85%） | 算法 / 工具工程师 | P1-3, P1-5 | **未开始** |
 | **P1-8** | iOS 复盘 | `ReviewApp` iOS 最小闭环：相册浏览、PhotoKit 异步分析、构图体检项展示、一键可逆裁切拉直写回 | ReviewApp iOS 工程师 | P0-3, P1-3 | **未开始** |
@@ -193,7 +193,7 @@ graph TD
 ## 5. 关键瓶颈与人员配额化解策略 (Anti-Blocking Strategy)
 
 1. **化解 Rust 工程师单点瓶颈（SPOF）**：
-   - 方案已给出详尽的 Swift 算法规格伪代码。在 W1–W4 期间，iOS 工程师 B 可在 Swift 侧按算法规格搭本地原型，但 **mock 仅限本地原型，合并前必须切换真实引擎**（未链接 `libcompose_ffi.a` 时 `LiveComposer` 会静默转 mock，见 TASK-01），不得以 mock 通过作为验收依据；
+   - 方案已给出详尽的 Swift 算法规格伪代码。在 W1–W4 期间，iOS 工程师 B 可在 Swift 侧按算法规格搭本地原型，但 **mock 仅限本地原型，合并前必须切换真实引擎**（TASK-01 后缺 `ComposeCore.xcframework` 会编译失败，不再有静默 mock），不得以 mock 通过作为验收依据；
    - 规则 A–D 开发期间，iOS 工程师 B 参与编写 Rust 单元测试与黄金测试向量，实现跨语言结对编程。
 2. **移动端优先阶梯发版（Staged Release）**：
    - 旅拍具有较强的季节性，移动端抢占"景区帮拍"痛点具有最高的商业时效价值；
@@ -210,7 +210,7 @@ P0 阶段（W1–W2）与 P1 Sprint 1（W3）**名义完成、实际部分交付
 - **`compose-core` A–D 算法闭环（E–G 未开始）**：
   - `classify.rs`：实现 `facing_yaw`、`classify_facing` 与带时间迟滞（`switch_hold = 0.4s`、`ankle_lost_hold = 0.5s`）的 `ShotClassifierState`。
   - A–D 类全套规则：`TiltRule`（含平拍 `is_flatish` 豁免与退出迟滞）、`PitchRule`、`HeadCropRule`（掩码顶带与头区重叠校验 + 鼻颈几何回退）、`JointCropRule`（3 关节肢体链线段与画幅求交 + 缺失末端关节外推）、`FeetFloatingRule`（`feet.floating`）、`PlacementRule`、`HeadroomRule`、`LeadRoomRule`（`placement.lead_room`）、`ScaleRule`（`placement.scale`）、`EdgeCrowdRule`（`edge.crowd`）及多人规则。
-  - `merger.rs` (`Merger`)：实现 `feet.floating` + `tilt.vertical` 合并为 `combo.lower_vertical`、重复后退动作去重与统一优先级排序（注意：`multi.unbalanced` 未在排序表中，会落兜底 rank 500，见第 7 节 / TASK-03）。
+  - `merger.rs` (`Merger`)：实现 `feet.floating` + `tilt.vertical` 合并为 `combo.lower_vertical`、重复后退动作去重与统一优先级排序（审计时 `multi.unbalanced` 未在排序表中、落兜底 rank 500；TASK-03 已修复，现排 80，见第 7 节）。
   - `arbiter.rs` (`HintArbiter`)：实现 7 大防抖机制（按严重度分级 `enterDelay`、`exitHold`、`minShow`、`ignoreAfter` + `snoozeFor`、`motionMute`、`goodHold`、`focus_rule` 提权），并在 `compose-ffi` 的 `LiveEngine` 中完整接入（per-rule `enterDelayOverride` 尚未实现）。
   - 黄金测试向量为 **13 组 (`001`–`013`)** 且全部通过；但校验器仅断言数量 `>= 10`（`golden_runner.rs:98-102`），断言偏松（TASK-02）。
 
@@ -249,12 +249,12 @@ Week 4 的核心目标是打通 **`PerceptionKit` → `ComposeKit` (`LiveCompose
 | 矛盾点 | 文档原表述 | 代码事实（文件:行） | 处置 |
 |---|---|---|---|
 | Spike #1 画质/时延 | 已完成：清晰度 97.8%、动态范围 97.8%、快门时延 84.5ms | `scripts/evaluate-capture-quality.py:19-53` 硬编码 native/assist 两组指标后自断言，无拍摄输入 | 改判「部分完成（仅合成自测）」；无真实输入时门禁输出 `SYNTHETIC_SELF_TEST`（TASK-02） |
-| Spike #2 / ComposeKit 链接 | 「UniFFI 绑定打通，Rust 与 Swift 判定一致」 | `apple/Packages/ComposeKit/Package.swift:19-30` 未链接 `libcompose_ffi.a`；`LiveComposer` 初始化失败静默转 mock，Swift 测试仅 `createMock()` 2 条 | 改判「部分完成（Rust 可用 / Swift 未真链接）」；TASK-01 禁止静默 mock |
+| Spike #2 / ComposeKit 链接 | 「UniFFI 绑定打通，Rust 与 Swift 判定一致」 | `apple/Packages/ComposeKit/Package.swift:19-30` 未链接 `libcompose_ffi.a`；`LiveComposer` 初始化失败静默转 mock，Swift 测试仅 `createMock()` 2 条 | **已由 TASK-01 修复（2026-10-30）**：改为 `.binaryTarget` 链接 XCFramework 并移除静默 mock（审计时事实保留）；Swift 真链接/`swift test` 待 macOS 验证 |
 | 黄金向量数量与断言 | 「10 组 `001`–`010`，Rust 与 Swift 100% 判定一致」 | `core/compose-core/tests/golden_runner.rs:98-102` 仅断言 `count >= 10`；fixture 实为 13 组（`001`–`013`） | 统一改述 13 组；断言改 `== 13` 且 finding 集合精确相等（TASK-02） |
 | App Clip 体积 | 「未压缩载荷 7.35 KB，远优于 5MB / 15MB 预算」 | `scripts/check-appclip-size.py:48,81` 累加**源码字节**并跳过 `xtool/` 构建目录 | 改判「部分完成（源码字节，非编译产物）」；改为量 `.app` 或显式 `--source-only`（TASK-02） |
 | CaptureKit 采集管线 | 「W3-1 / W3-2 已交付 100%，预览无丢帧、四向旋转严密对齐」 | `CaptureSessionManager.swift:9-29,270-290` 的 `VideoSampleFrame` 丢弃 `CVPixelBuffer`；`RotationCoordinatorBridge` 无真实 KVO；热节流不降帧 | 改判「部分完成」；TASK-06 透出像素与曝光/内参、KVO、降帧 |
 | PerceptionKit 感知 | 「`BodyPoseAnalyzer` 实现 Vision 真实调用、`MaskSummarizer` 就绪」 | `BodyPoseAnalyzer` / `MaskSummarizer` 不执行 Vision 请求；`FrameSyncHub` 最近邻取帧、无插值/EXIF | 改判「部分完成」；TASK-07 真正执行请求并做运动插值 |
-| 规则排序与阈值 | 「A–D 全量闭环，`Merger` 统一优先级排序；规则名 `level.roll`」 | `core/compose-core/src/rules/multi_subject.rs:46` 发 `multi.unbalanced`，`merger.rs:17` 只排 `multi.balance` → 落兜底 rank 500；`rules/placement.rs:19` 硬编码 `0.15` 而非 `cfg.placement.center_tol`（`Thresholds.json` = 0.05）；规则名为 `tilt.level` | 记为活缺陷（TASK-03），并校准 golden 006–008；文档统一改 `tilt.level` |
+| 规则排序与阈值 | 「A–D 全量闭环，`Merger` 统一优先级排序；规则名 `level.roll`」 | `core/compose-core/src/rules/multi_subject.rs:46` 发 `multi.unbalanced`，`merger.rs:17` 只排 `multi.balance` → 落兜底 rank 500；`rules/placement.rs:19` 硬编码 `0.15` 而非 `cfg.placement.center_tol`（`Thresholds.json` = 0.05）；规则名为 `tilt.level` | **已由 TASK-03 修复**（2026-10-30；原描述保留为审计时事实：`merger.rs:17` 旧键 `multi.balance` → 兜底 500；`placement.rs:19` 硬编码 0.15）；文档统一改 `tilt.level` |
 | 规则覆盖与上层功能 | 「E–G 属 P2 待办；P1 采集感知阶段已启动、Sprint 2 进行中」 | `rules/mod.rs` 仅 12 条规则；`compose-ffi/src/lib.rs:88-113` 已解析并传入 `LightContext`，但 `RulesEngine` 的 12 条规则无一消费 `ctx.light`；`settings.*`、`analyze_still`、`Thresholds.still`、`reload(config:)`、per-rule `enterDelayOverride` 均未实现；CameraApp 端到端、用户 HUD、SyncKit 传输、App Clip 流程、TTS、ReviewApp 仍为占位/桩/仅数据模型 | E–G 改判「未开始」（TASK-04/05）；上层功能按 TASK-08–13 排期，不标完成 |
 
 ---
@@ -265,9 +265,9 @@ Week 4 的核心目标是打通 **`PerceptionKit` → `ComposeKit` (`LiveCompose
 
 | ID | 任务 | 规模 | 依赖 | 验收要点 |
 |---|---|---|---|---|
-| TASK-01 | ComposeKit 链接 Rust 静态库并禁止静默 mock | M | 无 | host `swift test` 与 xtool iOS 构建均链接 `libcompose_ffi.a`，13 向量走真实 `LiveComposer` 且 `isMockMode == false` |
+| TASK-01 | ComposeKit 链接 Rust 静态库并禁止静默 mock | M | 无 | host `swift test` 与 xtool iOS 构建均链接 `ComposeCore.xcframework`（内含 `libcompose_ffi.a`），13 向量走真实 `LiveComposer` 且 `isMockMode == false`。**状态：已完成（2026-10-30），Swift 侧真链接待 macOS 验证**；本环境未验证：`swift test` 13 向量实跑、`xtool dev build`、真机 `isMockMode == false` |
 | TASK-02 | 替换自证式门禁脚本 | M | 01 | golden_runner 断言 `== 13` 且 finding 集合精确相等；appclip 脚本量编译产物或显式 `--source-only`；capture/decode 无真实输入时输出 `SYNTHETIC_SELF_TEST`；swift-parity 字段级比对 |
-| TASK-03 | 修 `multi.unbalanced` 排序与 `placement.center_tol` 硬编码 | S | 无 | merger 给 `multi.unbalanced` 排 80；placement 读 `cfg.placement.center_tol`；校准 golden 006–008；`cargo test` 绿 |
+| TASK-03 | 修 `multi.unbalanced` 排序与 `placement.center_tol` 硬编码 | S | 无 | merger 给 `multi.unbalanced` 排 80；placement 读 `cfg.placement.center_tol`；校准 golden 006–008；`cargo test` 绿。**状态：已完成（2026-10-30）**：`merger.rs` 给 `multi.unbalanced` 排 80（`high` 档，< `edge.crowd` 130）、`placement.rs` 读 `cfg.placement.center_tol`（0.05）；`cargo test --workspace` / `clippy -D warnings` / `fmt --check` 全绿；13 组 golden 无失败（未改 fixture） |
 | TASK-04 | 实现规则 E/F/G + per-rule `enterDelayOverride` | M | 03 | 新增 light/distance/optics 规则，规则层实际消费 `ctx.light`（FFI `step_json` 已解析传入）；新增 golden 014+ 并通过 |
 | TASK-05 | 扩展 FFI 契约并重生成 Swift 绑定 | M | 04 | 输出 severity、完整 action（含 switchZoom/stepForward/lowerPhone）、数值 target、hint 文本；导出 `reload_config`/`analyze_still` |
 | TASK-06 | CaptureKit 透出 CVPixelBuffer+EXIF、真实旋转、热节流降帧 | M | 无 | 帧回调拿到像素与曝光/内参；RotationCoordinator KVO 生效；serious/critical 降 60→30fps |

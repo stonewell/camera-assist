@@ -14,7 +14,7 @@ impl Merger {
             "feet.floating" => 50,
             "tilt.vertical" => 60,
             "tilt.level" => 70,
-            "multi.balance" => 80,
+            "multi.unbalanced" => 80,
             "headroom.insufficient" | "headroom.excessive" | "headroom.allowance" => 90,
             "placement.lead_room" => 100,
             "placement.center" | "placement.thirds" => 110,
@@ -108,6 +108,12 @@ mod tests {
         assert_eq!(merged[0].hint_key, "lower_and_vertical");
         assert_eq!(merged[0].primary_action, Action::LowerPhone);
         assert_eq!(merged[0].secondary_action, Some(Action::HoldVertical));
+    }
+
+    #[test]
+    fn test_multi_unbalanced_priority_rank() {
+        assert_eq!(Merger::priority_rank("multi.unbalanced"), 80);
+        assert!(Merger::priority_rank("multi.unbalanced") < Merger::priority_rank("edge.crowd"));
     }
 
     #[test]

@@ -1,24 +1,53 @@
 import Foundation
 
+/// Errors surfaced by the ComposeKit wrapper.
+///
+/// TASK-01: there is no silent mock fallback any more. Because the generated
+/// `compose_ffi.swift` references the native `compose-ffi` C symbols directly, ComposeKit
+/// cannot even compile without the linked `ComposeCore.xcframework`. This error therefore
+/// covers runtime failures that survive linking (e.g. a malformed config); callers must
+/// never swallow it.
+public enum ComposeEngineError: Error, LocalizedError, Sendable {
+    case initializationFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .initializationFailed(let reason):
+            return """
+            ComposeEngine unavailable: \(reason). \
+            This is a runtime failure — a missing ComposeCore.xcframework would have failed \
+            at compile time instead. Build it with ./scripts/build-xcframework.sh.
+            """
+        }
+    }
+}
+
 /// High-level actor providing thread-safe, non-blocking composition rule evaluation.
 /// Complies with Swift 6 strict concurrency standards.
 public actor LiveComposer {
     private var engine: LiveEngine?
-    private var isMockMode: Bool = false
+    /// `false` in every release build. Mock engines exist only under `#if DEBUG`, and a
+    /// missing native engine throws instead of degrading to mock.
+    public private(set) var isMockMode: Bool = false
     private var focusRuleId: String? = nil
 
     /// Initialize LiveComposer with optional JSON config and backend name.
-    public init(configJson: String = "{}", backend: String = "vision") {
+    ///
+    /// Throws `ComposeEngineError.initializationFailed` when the Rust engine is not
+    /// available. Callers must not swallow this error.
+    public init(configJson: String = "{}", backend: String = "vision") throws {
         do {
             self.engine = try LiveEngine(configJson: configJson, backend: backend)
             self.isMockMode = false
         } catch {
-            // Graceful fallback to pure-Swift mock mode if native binary is not linked (e.g. early UI development)
             self.engine = nil
-            self.isMockMode = true
+            self.isMockMode = false
+            throw ComposeEngineError.initializationFailed("\(error)")
         }
     }
 
+    #if DEBUG
+    /// Debug-only mock engine (SwiftUI previews). Never compiled into release builds.
     private init(mockMode: Bool) {
         self.engine = nil
         self.isMockMode = mockMode
@@ -28,25 +57,28 @@ public actor LiveComposer {
     public static func createMock() -> LiveComposer {
         return LiveComposer(mockMode: true)
     }
+    #endif
 
-    /// Process a frame through the Rust composition engine or Swift mock fallback.
+    /// Process a frame through the Rust composition engine.
+    ///
+    /// Throws `ComposeEngineError.initializationFailed("engine not initialized")` when the
+    /// engine is missing or mock, so a caller can never mistake mock output for a real
+    /// evaluation.
     public func evaluate(
         frameJson: String,
         lightJson: String? = nil,
         timestamp: Double = 0.0
     ) throws -> ComposeOutput {
-        if !self.isMockMode, let eng = self.engine {
-            let ffiOut = try eng.stepJson(frameJson: frameJson, lightJson: lightJson, t: timestamp)
-            return ComposeOutput(
-                activeFindingId: ffiOut.activeFindingId,
-                hintKey: ffiOut.hintKey,
-                isGoodToShoot: ffiOut.isGoodToShoot,
-                rawFindingsCount: Int(ffiOut.rawFindingsCount)
-            )
-        } else {
-            // Mock evaluation logic for early Swift preview
-            return evaluateMockJson(frameJson: frameJson)
+        guard let eng = self.engine, !self.isMockMode else {
+            throw ComposeEngineError.initializationFailed("engine not initialized")
         }
+        let ffiOut = try eng.stepJson(frameJson: frameJson, lightJson: lightJson, t: timestamp)
+        return ComposeOutput(
+            activeFindingId: ffiOut.activeFindingId,
+            hintKey: ffiOut.hintKey,
+            isGoodToShoot: ffiOut.isGoodToShoot,
+            rawFindingsCount: Int(ffiOut.rawFindingsCount)
+        )
     }
 
     /// Set prioritized focus rule.
@@ -56,35 +88,9 @@ public actor LiveComposer {
     }
 
     /// Get engine version.
+    ///
+    /// Returns `"0.0.0-unlinked"` when the native engine is absent — never a fake version.
     public func version() -> String {
-        return self.engine?.version() ?? "1.0.0-mock"
-    }
-
-    // MARK: - Private Mock Evaluator
-
-    private func evaluateMockJson(frameJson: String) -> ComposeOutput {
-        // Simple heuristic mock for roll angle
-        if frameJson.contains("\"roll_deg\": 3.") || frameJson.contains("\"roll_deg\": 4.") {
-            return ComposeOutput(
-                activeFindingId: "tilt.level",
-                hintKey: "rotate_ccw",
-                isGoodToShoot: false,
-                rawFindingsCount: 1
-            )
-        } else if frameJson.contains("\"crop.head\"") || frameJson.contains("\"min_y\": 0.00") {
-            return ComposeOutput(
-                activeFindingId: "crop.head",
-                hintKey: "tilt_up",
-                isGoodToShoot: false,
-                rawFindingsCount: 1
-            )
-        } else {
-            return ComposeOutput(
-                activeFindingId: nil,
-                hintKey: "good",
-                isGoodToShoot: true,
-                rawFindingsCount: 0
-            )
-        }
+        return self.engine?.version() ?? "0.0.0-unlinked"
     }
 }

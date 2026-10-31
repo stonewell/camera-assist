@@ -806,7 +806,7 @@ func facingYaw(_ s: Subject) -> Double? {
 
 ### 8.3 规则清单
 
-> **实现状态（2026-10-30 代码审计）**：A–D 类规则已在 `compose-core` 实现，但存在活缺陷（`multi.unbalanced` 未入优先级、`placement` 未读 `cfg.placement.center_tol`，见 TASK-03）；**E、F、G 类规则与 AutoSettings 未开始**（TASK-04）。`analyze_still`、`Thresholds.still`、per-rule `enterDelayOverride`、`LiveComposer.reload(config:)` 与 `Arc<Config>` 热重载均**计划中、未实现**（TASK-04/05）。本节其余内容是设计规格，不代表已落地。
+> **实现状态（2026-10-30 代码审计）**：A–D 类规则已在 `compose-core` 实现；审计时存在的活缺陷（`multi.unbalanced` 未入优先级、`placement` 未读 `cfg.placement.center_tol`）**已于 TASK-03 修复**；**E、F、G 类规则与 AutoSettings 未开始**（TASK-04）。`analyze_still`、`Thresholds.still`、per-rule `enterDelayOverride`、`LiveComposer.reload(config:)` 与 `Arc<Config>` 热重载均**计划中、未实现**（TASK-04/05）。本节其余内容是设计规格，不代表已落地。
 
 #### A. 设备姿态（只依赖 IMU，所有景别）
 
@@ -1947,7 +1947,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 
 | 里程碑 | 周 | 交付内容 | 退出标准 |
 |---|---|---|---|
-| **M0 验证**<br>`[部分完成（原标"已完成 100%"，已被审计推翻）]` | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22。<br>**原表述（已被审计推翻）**：「超额交付：提前完成 A–D 类构图规则与 10 组黄金测试向量」——实为 **13 组（`001`–`013`）**，且 A–D 类存在活缺陷（TASK-03）。 | **部分完成（2026-10-30 代码审计口径）**：<br>• **黄金向量**：13 组 `001`–`013`，Rust 侧通过；Swift 侧仅 `createMock()` 2 组，且 `golden_runner.rs:98-102` 只断言 `count >= 10`（TASK-02 收紧为 `== 13` 且 finding 集合精确相等）。原「10/10 黄金测试向量在 Rust 与 Swift 侧 100% 一致」已被审计推翻。<br>• **画质 / 时延**：「97.8% / 84.5ms」为**合成自测**（`scripts/evaluate-capture-quality.py:19-53` 硬编码指标后自断言），无真机盲测，不构成 SLA 证据（TASK-02）。<br>• **UniFFI 4.7μs**：桌面微基准，真机未验证。<br>• **App Clip 体积**：「7.35KB」为**源码字节统计**（`scripts/check-appclip-size.py:48,81` 累加源码并跳过 `xtool/` 构建目录），非编译产物；目标仍是真实 `.app` < 8MB（TASK-02）。 |
+| **M0 验证**<br>`[部分完成（原标"已完成 100%"，已被审计推翻）]` | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22。<br>**原表述（已被审计推翻）**：「超额交付：提前完成 A–D 类构图规则与 10 组黄金测试向量」——实为 **13 组（`001`–`013`）**，且 A–D 类存在活缺陷（审计时存在，已于 TASK-03 修复）。 | **部分完成（2026-10-30 代码审计口径）**：<br>• **黄金向量**：13 组 `001`–`013`，Rust 侧通过；Swift 侧仅 `createMock()` 2 组，且 `golden_runner.rs:98-102` 只断言 `count >= 10`（TASK-02 收紧为 `== 13` 且 finding 集合精确相等）。原「10/10 黄金测试向量在 Rust 与 Swift 侧 100% 一致」已被审计推翻。<br>• **画质 / 时延**：「97.8% / 84.5ms」为**合成自测**（`scripts/evaluate-capture-quality.py:19-53` 硬编码指标后自断言），无真机盲测，不构成 SLA 证据（TASK-02）。<br>• **UniFFI 4.7μs**：桌面微基准，真机未验证。<br>• **App Clip 体积**：「7.35KB」为**源码字节统计**（`scripts/check-appclip-size.py:48,81` 累加源码并跳过 `xtool/` 构建目录），非编译产物；目标仍是真实 `.app` < 8MB（TASK-02）。 |
 | **M1 采集与感知** | W3–4 | CaptureKit（第 6 节全部）、PerceptionKit（姿态、掩码、跟踪、平滑、IMU、曝光、亮度探针）、调试面板 | 调试面板稳定显示所有信号；基准机 15 分钟不进入 `.serious` |
 | **M2 构图规则** | W5–7 | `compose-core`（Rust）：分类器、A–D 类规则、Merger、仲裁器、Rust 单元测试、黄金测试向量（工程师 B + 照片复盘应用的 Rust 工程师）；`ComposeKit` 封装、文案生成、叠加层 UI（Swift） | Rust 单元测试与黄金向量全部通过，Swift 侧通过同一组黄金向量；手动走查流畅 |
 | **M3 评测与调参** | W6–9（与 M2 并行开始） | 数据集与标注、`compose-eval-vision`、`capture-replay`、CI 回归门禁、第一轮阈值调整（算法工程师） | A–D 类规则精确率 ≥ 85% |
@@ -2196,7 +2196,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 类别 | 修正 | 位置 |
 |---|---|---|
 | 命名 | 规则 `level.roll` 统一改为代码实现名 `tilt.level`；首次出现处注明「V1.1 旧名 `level.roll`」 | 8.3 A 类规则表、8.5 优先级链、附录 A.1.2 #7 |
-| 状态 | 新增「实现状态」说明：A–D 已实现但有活缺陷（TASK-03）；E/F/G 与 AutoSettings 未开始（TASK-04）；`analyze_still`、`Thresholds.still`、per-rule `enterDelayOverride`、`LiveComposer.reload(config:)` / `Arc<Config>` 热重载均为计划中（TASK-04/05） | 8.3、9、5.1.1、8.7、附录 A.1.1 #3、A.1.2 #7 |
+| 状态 | 新增「实现状态」说明：A–D 已实现，审计时存在 TASK-03 活缺陷（后已修复）；E/F/G 与 AutoSettings 未开始（TASK-04）；`analyze_still`、`Thresholds.still`、per-rule `enterDelayOverride`、`LiveComposer.reload(config:)` / `Arc<Config>` 热重载均为计划中（TASK-04/05） | 8.3、9、5.1.1、8.7、附录 A.1.1 #3、A.1.2 #7 |
 | 数量 | M0 的「10 组 / 10/10 黄金向量」改述为 **13 组（`001`–`013`）**；Rust 侧通过、Swift 侧仅 `createMock()` 2 组，`golden_runner` 仅断言 `>= 10`（TASK-02） | 18.2 M0、16.1 |
 | 性能口径 | 「画质 97.8% / 快门时延 84.5ms」标注为**合成自测**（脚本硬编码后自断言），无真机盲测；「UniFFI 4.7μs」标注为桌面微基准 | 18.2 M0 |
 | 体积口径 | 「App Clip 7.35KB」标注为**源码字节统计**（跳过 `xtool/`），非编译产物；目标为真实 `.app` < 8MB | 18.2 M0、附录 A.7 |

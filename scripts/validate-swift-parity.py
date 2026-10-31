@@ -175,7 +175,164 @@ def main() -> int:
         print(f"  ✓ {gv.name:<32} [id: {vid}, findings: {len(findings)}]")
 
     print(f"--- [validate-swift-parity] All {len(golden_vectors)} golden vectors validated with Swift parity. ---")
+
+    # 9. TASK-01 hard gate: ComposeKit must really link compose-ffi and must never silently mock
+    print("--- [validate-swift-parity] Checking ComposeKit FFI Wiring (TASK-01) ---")
+
+    compose_manifest = (compose_kit_dir / "Package.swift").read_text(encoding="utf-8")
+    live_composer_path = compose_kit_dir / "Sources" / "ComposeKit" / "LiveComposer.swift"
+    live_composer = live_composer_path.read_text(encoding="utf-8")
+    run_swift_tests_path = repo_root / "scripts" / "run-swift-tests.sh"
+    run_swift_tests = run_swift_tests_path.read_text(encoding="utf-8")
+
+    # 9.1 Package.swift must reference the XCFramework through a binaryTarget and depend on it.
+    # Comments in the manifest are stripped first: the design notes above mention
+    # "ComposeCore.xcframework" and ".binaryTarget", and matching raw text would make these
+    # assertions true no matter what the executable code does.
+    compose_manifest_code = re.sub(r"//[^\n]*", "", compose_manifest)
+
+    def delimited_block(text: str, open_index: int) -> str:
+        depth = 0
+        for idx in range(open_index, len(text)):
+            char = text[idx]
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+                if depth == 0:
+                    return text[open_index + 1: idx]
+        return text[open_index + 1:]
+
+    if "ComposeCore.xcframework" not in compose_manifest_code:
+        print(
+            "[FAIL] ComposeKit/Package.swift does not reference ComposeCore.xcframework in code "
+            "(a comment mentioning it is not enough: ComposeKit would build without the Rust engine)",
+            file=sys.stderr,
+        )
+        return 1
+    binary_target_match = re.search(
+        r'\.binaryTarget\s*\(\s*name:\s*"ComposeCore"\s*,\s*path:\s*[^)]*\)',
+        compose_manifest_code,
+    )
+    if binary_target_match is None:
+        print(
+            "[FAIL] ComposeKit/Package.swift declares no active "
+            '`.binaryTarget(name: "ComposeCore", path: ...)`; deleting or commenting that line '
+            "silently drops the Rust static library from the build",
+            file=sys.stderr,
+        )
+        return 1
+    compose_target_match = re.search(r'\.target\(\s*name:\s*"ComposeKit"', compose_manifest_code)
+    if compose_target_match is None:
+        print("[FAIL] ComposeKit/Package.swift has no ComposeKit target declaration", file=sys.stderr)
+        return 1
+    compose_target_open = compose_manifest_code.index("(", compose_target_match.start())
+    compose_target_segment = delimited_block(compose_manifest_code, compose_target_open)
+    if "dependencies" not in compose_target_segment or '"ComposeCore"' not in compose_target_segment:
+        print(
+            "[FAIL] ComposeKit target does not depend on the ComposeCore binary target "
+            "(the ComposeKit .target(...) block must list \"ComposeCore\" in dependencies)",
+            file=sys.stderr,
+        )
+        return 1
+    if "unsafeFlags" in compose_manifest_code:
+        print(
+            "[FAIL] ComposeKit/Package.swift uses unsafeFlags; SwiftPM forbids dependents on "
+            "such packages (use the ComposeCore binaryTarget instead)",
+            file=sys.stderr,
+        )
+        return 1
+    print("  ✓ Package.swift links ComposeCore.xcframework via a .binaryTarget dependency.")
+
+    # 9.2 The public initializer must be throwing and must not enable mock mode
+    init_match = re.search(r"public init\([^)]*\)\s*(throws\s*)?\{", live_composer)
+    if init_match is None:
+        print("[FAIL] LiveComposer.swift has no public init(...) initializer", file=sys.stderr)
+        return 1
+
+    def block_body(text: str, brace_index: int) -> str:
+        depth = 0
+        for idx in range(brace_index, len(text)):
+            char = text[idx]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[brace_index + 1: idx]
+        return text[brace_index + 1:]
+
+    init_open = init_match.end() - 1
+    init_body = block_body(live_composer, init_open)
+    if init_match.group(1) is None:
+        print(
+            "[FAIL] LiveComposer public init is not `throws`; engine failures would be hidden",
+            file=sys.stderr,
+        )
+        return 1
+    if re.search(r"isMockMode\s*=\s*true", init_body):
+        print(
+            "[FAIL] LiveComposer public init still enables mock mode (silent fallback)",
+            file=sys.stderr,
+        )
+        return 1
+    print("  ✓ LiveComposer public init is throwing and never enables mock mode.")
+
+    # 9.3 createMock() must be DEBUG-only
+    composer_lines = live_composer.splitlines()
+    create_mock_index = next(
+        (i for i, line in enumerate(composer_lines) if "func createMock" in line),
+        None,
+    )
+    if create_mock_index is None:
+        print("[FAIL] LiveComposer.createMock() is missing", file=sys.stderr)
+        return 1
+
+    depth = 0
+    in_debug_block = False
+    for idx in range(create_mock_index, -1, -1):
+        stripped = composer_lines[idx].strip()
+        if stripped.startswith("#endif"):
+            depth += 1
+        elif stripped.startswith("#if"):
+            if depth > 0:
+                depth -= 1
+            else:
+                in_debug_block = re.match(r"#if\s+DEBUG\b", stripped) is not None
+                break
+    if not in_debug_block:
+        print(
+            "[FAIL] LiveComposer.createMock() is not wrapped in `#if DEBUG`; mock mode could "
+            "ship in release builds",
+            file=sys.stderr,
+        )
+        return 1
+    print("  ✓ createMock() is confined to a `#if DEBUG` block.")
+
+    # 9.4 No mock evaluator anywhere
+    if "evaluateMockJson" in live_composer:
+        print(
+            "[FAIL] LiveComposer.swift still contains evaluateMockJson (silent mock fallback)",
+            file=sys.stderr,
+        )
+        return 1
+    print("  ✓ LiveComposer.swift contains no mock evaluator.")
+
+    # 9.5 macOS test runner must enforce the FFI link gate with a real export, not a comment
+    run_swift_tests_code = re.sub(r"^[ \t]*#[^\n]*", "", run_swift_tests, flags=re.MULTILINE)
+    if not re.search(r'^\s*export\s+COMPOSE_REQUIRE_FFI=1\s*$', run_swift_tests_code, re.MULTILINE):
+        print(
+            "[FAIL] scripts/run-swift-tests.sh has no active `export COMPOSE_REQUIRE_FFI=1` line; "
+            "a commented-out gate never reaches the manifest, so the XCFramework fatalError guard "
+            "would never fire on CI or device builds",
+            file=sys.stderr,
+        )
+        return 1
+    print("  ✓ scripts/run-swift-tests.sh enforces COMPOSE_REQUIRE_FFI=1 on macOS.")
+
+    print("--- [validate-swift-parity] ComposeKit FFI wiring gate passed (TASK-01). ---")
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())
