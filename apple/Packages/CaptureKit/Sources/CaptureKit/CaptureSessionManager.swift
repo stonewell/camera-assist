@@ -82,6 +82,9 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
                     continuation.resume()
                     return
                 }
+                if let existing = self.session, existing.isRunning {
+                    existing.stopRunning()
+                }
                 let sess = AVCaptureSession()
                 sess.beginConfiguration()
                 sess.sessionPreset = .photo
@@ -107,8 +110,8 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
                         photo.maxPhotoDimensions = bestDim
                     }
                 }
-                if self.configuration.enableDeferredProcessing && photo.isAutoDeferredPhotoProcessingSupported {
-                    photo.isAutoDeferredPhotoProcessingEnabled = true
+                if self.configuration.enableDeferredProcessing && photo.isAutoDeferredPhotoDeliverySupported {
+                    photo.isAutoDeferredPhotoDeliveryEnabled = true
                 }
                 if self.configuration.enableZeroShutterLag && photo.isZeroShutterLagSupported {
                     photo.isZeroShutterLagEnabled = true
