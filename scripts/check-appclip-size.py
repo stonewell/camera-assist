@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 FORBIDDEN_PATTERNS = [
+    re.compile(r"import\s+ComposeKit", re.IGNORECASE),
     re.compile(r"import\s+compose_ffi", re.IGNORECASE),
     re.compile(r"import\s+compose_core", re.IGNORECASE),
     re.compile(r"libcompose_core\.a", re.IGNORECASE),
@@ -43,7 +44,8 @@ def check_file_forbidden_tokens(file_path: Path) -> list:
 
 def calculate_directory_size(dir_path: Path) -> int:
     total_size = 0
-    for root, _, files in os.walk(dir_path):
+    for root, dirs, files in os.walk(dir_path):
+        dirs[:] = [d for d in dirs if d not in [".build", ".bsp", ".git", ".swiftpm", "xtool", ".xtool"]]
         for f in files:
             fp = Path(root) / f
             if fp.is_file():
@@ -75,7 +77,8 @@ def main() -> int:
             all_violations.append(f"Target directory {target} does not exist!")
             continue
 
-        for root, _, files in os.walk(target):
+        for root, dirs, files in os.walk(target):
+            dirs[:] = [d for d in dirs if d not in [".build", ".bsp", ".git", ".swiftpm", "xtool", ".xtool"]]
             for file_name in files:
                 p = Path(root) / file_name
                 if p.suffix in [".swift", ".h", ".m", ".c", ".cpp", ".plist", ".xcconfig"]:
