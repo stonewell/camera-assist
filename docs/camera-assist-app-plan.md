@@ -1,5 +1,6 @@
-# 帮拍相机 iOS App 开发方案 v1.6
+# 帮拍相机 iOS App 开发方案 v1.7
 
+> - **版本**：v1.7（2026-10-30 与代码审计同步）。**状态与执行顺序以 `development-priorities.md` 为准**：本文的完成度、数量、体积与性能口径若与该文档第 7 节（矛盾清单）、第 8 节（TASK-01..13）冲突，一律以后者为准。
 > - **范围**：iOS 实时帮拍相机。事后的照片复盘是独立应用，见 `photo-review-app-plan.md`；两者共用 Rust 规则核心 `compose-core`。全项目研发优先级与排期对齐见 `development-priorities.md`。
 > - **前身**：本文档合并并替代三份早期文档（已移到 `archive/`：`composition-rule-engine-ios.md`、`native-camera-leverage-ios.md`、`light-distance-advisor-ios.md`）；帮拍辅助功能来自 `helper-mode-features-research.md`。版本变化见附录 A。
 > - **约定**：【待验证】表示需要真机 spike 确认（汇总在第 20 节）。文中代码为设计级示例，未经编译，API 名称以最新 SDK 为准。第 7、8 节中属于 `compose-core` 的 Swift 代码是**算法规格**，实际实现为 Rust。
@@ -257,7 +258,9 @@ public final class LiveComposer: @unchecked Sendable {   // 只在 analysisQueue
         engine.setFocus(ruleId: ruleID)
     }
 
-    /// 重新加载阈值（调试面板使用）；调用方负责派发到 analysisQueue
+    /// 重新加载阈值（调试面板使用）；调用方负责派发到 analysisQueue。
+    /// 【计划中（未实现，见 TASK-05）】当前 FFI 没有 reload 入口，重建 LiveEngine 也不等价于
+    /// 增量热重载；`Arc<Config>` 热重载同样尚未实现。此处为设计规格。
     public func reload(config: ComposeConfig) throws {
         engine = try LiveEngine(configJson: config.json, backend: "vision")
     }
@@ -803,12 +806,16 @@ func facingYaw(_ s: Subject) -> Double? {
 
 ### 8.3 规则清单
 
+> **实现状态（2026-10-30 代码审计）**：A–D 类规则已在 `compose-core` 实现，但存在活缺陷（`multi.unbalanced` 未入优先级、`placement` 未读 `cfg.placement.center_tol`，见 TASK-03）；**E、F、G 类规则与 AutoSettings 未开始**（TASK-04）。`analyze_still`、`Thresholds.still`、per-rule `enterDelayOverride`、`LiveComposer.reload(config:)` 与 `Arc<Config>` 热重载均**计划中、未实现**（TASK-04/05）。本节其余内容是设计规格，不代表已落地。
+
 #### A. 设备姿态（只依赖 IMU，所有景别）
 
 | ID | 前置条件 | 触发 / 解除 | 严重度 | 动作 |
 |---|---|---|---|---|
-| `level.roll` | `!isFlatish` | \|roll\| > 2.5° / < 1.0° | > 5° critical，否则 major | `rotate(clockwise:)` |
+| `tilt.level` | `!isFlatish` | \|roll\| > 2.5° / < 1.0° | > 5° critical，否则 major | `rotate(clockwise:)` |
 | `tilt.vertical` | 景别为 fullBody 或 environmental | \|elevation\| > 10° / < 6° | major | `holdVertical` |
+
+> **命名**：V1.1 旧名 `level.roll`，代码实现为 `tilt.level`（见 `rules/horizon.rs`、`merger.rs` 与 golden `001`）。本文规则表、优先级链与静态图对照表已统一为 `tilt.level`。
 
 水平线 UI 始终显示（绿 ≤ 1°、黄 ≤ 2.5°、红），不经过仲裁。
 
@@ -1002,7 +1009,7 @@ func stepsToKeepFraming(distanceM d1: Double, fromZoom z1: Double, toZoom z2: Do
 先按严重度，同一严重度内按以下顺序：
 
 ```
-head.cut > lens.smudge > light.lowLight > level.roll
+head.cut > lens.smudge > light.lowLight > tilt.level
 > limbCut > combo.lowerVertical > feet.floating > distance.distortion > tilt.vertical
 > light.sunInFrame > light.backlit
 > scale > light.harshTop > light.flatFront > light.sideHarsh > leadRoom > headroom
@@ -1208,10 +1215,11 @@ public final class HintArbiter {
 ```
 
 > 照片复盘应用专用的 `still` 一节（歪斜、裁切建议的阈值）也在同一文件中，见 `photo-review-app-plan.md` 第 4.3 节；本 App 不读取。
+> **未实现标注**：示例中的 `arbiter.enterDelayOverride`（per-rule 进入延迟覆盖）与 `still` 一节的 `Thresholds.still` 解析均**尚未实现（计划中，见 TASK-04）**；当前 Rust 侧不解析这两处，写入不会生效。
 
 - 文件位置：monorepo 的 `shared/config/Thresholds.json`，所有应用共用；由 `compose-core` 的 `config` 模块解析。`stranger`、`voice` 两节只由本 App 的 Swift 代码读取，Rust 侧忽略。
 - 按感知后端覆盖：先读通用值，再叠加 `backendOverrides` 中对应后端的值。本 App 使用 `vision`；照片复盘应用的桌面端使用 `onnx`（`photo-review-app-plan.md` 第 5.4 节）。
-- 开发版：调试面板实时修改，立即生效。修改后通过 `LiveComposer.reload(config:)` 重新加载，**必须派发到 `analysisQueue` 上调用**。
+- 开发版：调试面板实时修改，立即生效。修改后通过 `LiveComposer.reload(config:)` 重新加载，**必须派发到 `analysisQueue` 上调用**（`LiveComposer.reload(config:)` 为**计划中 API，尚未实现**，见 TASK-05）。
 - 正式版：随包内置；后续接远程配置，按版本号灰度下发。
 
 ### 8.8 文案（shared/hints）
@@ -1253,6 +1261,8 @@ public final class HintArbiter {
 ---
 
 ## 9. 自动设置 AutoSettings
+
+> **实现状态（2026-10-30 代码审计）**：AutoSettings 策略**未开始**（TASK-04）。本节是设计规格：`compose-core` 现有 12 条规则中没有任何光线类（E 类）规则，未消费 `LightContext` 做光线判断，FFI 也不输出设置建议。
 
 ### 9.1 策略
 
@@ -1842,6 +1852,8 @@ final class VoicePrompter {
 
 规则核心的测试写在 Rust 侧（`cargo test`）；跨语言一致性由 `fixtures/golden/` 的黄金测试向量保证（Rust 直接跑一遍，Swift 通过 `ComposeKit` 再跑一遍）。Swift 侧只测封装、感知、UI 相关逻辑。
 
+> **现状（2026-10-30 审计）**：这是目标状态。当前 `ComposeKit` 未链接 `libcompose_ffi.a`，初始化失败会静默转 mock，Swift 侧黄金向量实际只有 `createMock()` 2 组；因此“Swift 侧通过同一组黄金向量”尚不成立（TASK-01/TASK-02）。
+
 - 每条规则：固定输入覆盖"刚好合格 / 刚好触发 / 迟滞区间"。
 - 几何：线段求交、外推、四种拍摄方向的坐标变换。
 - 太阳位置：与 NOAA Solar Calculator 对比 50 个城市、日期组合，误差 < 0.5°。
@@ -1935,7 +1947,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 
 | 里程碑 | 周 | 交付内容 | 退出标准 |
 |---|---|---|---|
-| **M0 验证**<br>`[已完成 100%]` | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22。<br>**超额交付**：提前完成 A–D 类构图规则与 10 组黄金测试向量。 | **已通过**：画质差距达成率 97.8% ≥ 95%，快门时延 84.5ms；UniFFI 耗时 4.7μs（远优于 1.0ms 预算）；App Clip 纯 Swift 仅 7.35KB；10/10 黄金测试向量在 Rust 与 Swift 侧 100% 一致。 |
+| **M0 验证**<br>`[部分完成（原标"已完成 100%"，已被审计推翻）]` | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22。<br>**原表述（已被审计推翻）**：「超额交付：提前完成 A–D 类构图规则与 10 组黄金测试向量」——实为 **13 组（`001`–`013`）**，且 A–D 类存在活缺陷（TASK-03）。 | **部分完成（2026-10-30 代码审计口径）**：<br>• **黄金向量**：13 组 `001`–`013`，Rust 侧通过；Swift 侧仅 `createMock()` 2 组，且 `golden_runner.rs:98-102` 只断言 `count >= 10`（TASK-02 收紧为 `== 13` 且 finding 集合精确相等）。原「10/10 黄金测试向量在 Rust 与 Swift 侧 100% 一致」已被审计推翻。<br>• **画质 / 时延**：「97.8% / 84.5ms」为**合成自测**（`scripts/evaluate-capture-quality.py:19-53` 硬编码指标后自断言），无真机盲测，不构成 SLA 证据（TASK-02）。<br>• **UniFFI 4.7μs**：桌面微基准，真机未验证。<br>• **App Clip 体积**：「7.35KB」为**源码字节统计**（`scripts/check-appclip-size.py:48,81` 累加源码并跳过 `xtool/` 构建目录），非编译产物；目标仍是真实 `.app` < 8MB（TASK-02）。 |
 | **M1 采集与感知** | W3–4 | CaptureKit（第 6 节全部）、PerceptionKit（姿态、掩码、跟踪、平滑、IMU、曝光、亮度探针）、调试面板 | 调试面板稳定显示所有信号；基准机 15 分钟不进入 `.serious` |
 | **M2 构图规则** | W5–7 | `compose-core`（Rust）：分类器、A–D 类规则、Merger、仲裁器、Rust 单元测试、黄金测试向量（工程师 B + 照片复盘应用的 Rust 工程师）；`ComposeKit` 封装、文案生成、叠加层 UI（Swift） | Rust 单元测试与黄金向量全部通过，Swift 侧通过同一组黄金向量；手动走查流畅 |
 | **M3 评测与调参** | W6–9（与 M2 并行开始） | 数据集与标注、`compose-eval-vision`、`capture-replay`、CI 回归门禁、第一轮阈值调整（算法工程师） | A–D 类规则精确率 ≥ 85% |
@@ -2075,7 +2087,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 |---|---|---|---|
 | 1 | 握持方向、预览旋转由自己根据重力向量判断，与调研结论冲突 | 构图方案 4.1 | 改用 `AVCaptureDevice.RotationCoordinator`。Vision 输入方向直接取协调器给出的角度，坐标变换简化为只翻转 y 轴。**roll 角仍由 IMU 计算**（协调器只给出 90° 的整数倍） |
 | 2 | `Action` 中 `stepBack`/`stepForward` 没有数量；光线方案另加了 `steps(Int)` | 构图 3 / 光线 6.1 | 统一为 `steps(Int)`（正数后退、负数前进）。距离未知时默认 ±1 |
-| 3 | 光线类规则需要 1.0 秒进入延迟，但仲裁器只支持按严重度设置 | 光线 6.2 | 仲裁器增加**按规则覆盖**的 `enterDelayOverride` |
+| 3 | 光线类规则需要 1.0 秒进入延迟，但仲裁器只支持按严重度设置 | 光线 6.2 | 仲裁器增加**按规则覆盖**的 `enterDelayOverride`（**计划中，未实现，见 TASK-04**） |
 | 4 | 镜头脏污、低光两条规则只在建议里提到，没有进入规则清单 | 调研 6 | 正式纳入规则清单（G 类） |
 | 5 | 最低系统版本写的是 iOS 17，但相机控制按键 API、锁屏扩展需要 iOS 18；镜头脏污、deferred start 需要 iOS 26 | 构图 0 / 调研 | 最低 **iOS 18**，iOS 26 的特性用 `#available` 按需启用（见第 3 节） |
 | 6 | 优先级列表分散在两份文档，光线和距离规则没有统一排序 | 构图 7.3 / 光线 6.2 | 第 8.5 节给出统一的优先级 |
@@ -2092,7 +2104,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 4 | `extendedPoints`、`intersectFrame` 只写了"实现略" | 第 8.3 节给出完整实现 |
 | 5 | 侧身时用耳朵判断朝向，左右方向未确认 | 保留，并列入 spike（#15） |
 | 6 | 大腿根部被切（只剩胯部）没有覆盖 | 列入 v1.1，MVP 不做 |
-| 7 | 静态照片没有 IMU，`level.roll` 无法使用 | 静态图分析改用 `VNDetectHorizonRequest`，规则接口不变（v1.2 起由独立的照片复盘应用使用） |
+| 7 | 静态照片没有 IMU，`tilt.level`（V1.1 旧名 `level.roll`）无法使用 | 静态图分析改用 `VNDetectHorizonRequest`，规则接口不变（v1.2 起由独立的照片复盘应用使用）。**当前为计划中、未实现**：`analyze_still` 与 `Thresholds.still` 均不存在，见 TASK-05 |
 | 8 | 横拍时的 roll 公式没有验证 | 按拍摄角度分情况计算，符号列入 spike（#15） |
 
 #### A.1.3 新增的整合点
@@ -2171,8 +2183,21 @@ compose-eval-vision --images ./dataset --labels labels.json \
 |---|---|---|
 | 文档命名 | 方案文档由通用的 `ios-app-development-plan.md` 重命名为产品级对应的 `camera-assist-app-plan.md`，与 `photo-review-app-plan.md` 形成命名对称 | 全局 |
 | 核心体验演进 | "路人帮拍"从原本单纯的"单机交接手机"模式，升级为**以"App Clip 扫码拍摄 + 自动回传"为主力、单机交接为备选的双模式架构**；彻底解决游客请陌生人帮拍时的财产安全与隐私心理焦虑 | 第 1、2、11.1 节 |
-| 架构解耦与体积门禁 | 新增 `CameraAppClip` 独立轻量 Target（解压体积严格 < 15 MB，实际仅 3~4 MB）；App Clip **零 Rust 依赖**，全量构图规则在主人端完成，App Clip 仅负责 Vision 图像配准与 IMU 对齐 | 第 1、5.1、12.3 节 |
+| 架构解耦与体积门禁 | 新增 `CameraAppClip` 独立轻量 Target（解压体积严格 < 15 MB；原表述「实际仅 3~4 MB」已被审计推翻，现有证据仅为**源码字节统计**，真实 `.app` 未测，见 TASK-02）；App Clip **零 Rust 依赖**，全量构图规则在主人端完成，App Clip 仅负责 Vision 图像配准与 IMU 对齐 | 第 1、5.1、12.3 节 |
 | 跨机安全通信 | 新增 `SyncKit` 共享组件；设计端到端加密（E2EE）临时会话通道（URL Fragment 传递 AES-256-GCM 密钥，云端中继零知识盲转发，会话 15 分钟 TTL 彻底自毁）；离线自动降级支持 MultipeerConnectivity | 第 5.1、11.1.4、11.1.5、14 节 |
 | 硬件自适应 | 针对主人与路人 iPhone 焦段/镜头不一致（Pro 多焦段 vs 标准版双摄），引入 FOV 自动归一化与数码裁切比例自适应 | 第 11.1.6 节 |
 | 隐私强化 | 路人端 App Clip **默认零相册权限**，成片内存直传主人端，不残留路人相册；提供可选"我也存一张"及轻量主 App 推荐入口 | 第 11.1.8、14 节 |
 | 评测与排期 | 新增 Spike #23（App Clip 体积与冷启动 < 800ms）与 Spike #24（E2EE 照片实时同步与弱网并发优化）；在 M5 里程碑中明确研发分工 | 第 16.4、17、18.2、20 节 |
+
+### A.8 v1.7：与 2026-10-30 代码审计同步
+
+> 本版不重写设计规格，只修正状态声明、规则命名、数量、体积与性能口径。权威依据：`development-priorities.md` v1.2 第 7 节（矛盾清单）与第 8 节（TASK-01..13）。
+
+| 类别 | 修正 | 位置 |
+|---|---|---|
+| 命名 | 规则 `level.roll` 统一改为代码实现名 `tilt.level`；首次出现处注明「V1.1 旧名 `level.roll`」 | 8.3 A 类规则表、8.5 优先级链、附录 A.1.2 #7 |
+| 状态 | 新增「实现状态」说明：A–D 已实现但有活缺陷（TASK-03）；E/F/G 与 AutoSettings 未开始（TASK-04）；`analyze_still`、`Thresholds.still`、per-rule `enterDelayOverride`、`LiveComposer.reload(config:)` / `Arc<Config>` 热重载均为计划中（TASK-04/05） | 8.3、9、5.1.1、8.7、附录 A.1.1 #3、A.1.2 #7 |
+| 数量 | M0 的「10 组 / 10/10 黄金向量」改述为 **13 组（`001`–`013`）**；Rust 侧通过、Swift 侧仅 `createMock()` 2 组，`golden_runner` 仅断言 `>= 10`（TASK-02） | 18.2 M0、16.1 |
+| 性能口径 | 「画质 97.8% / 快门时延 84.5ms」标注为**合成自测**（脚本硬编码后自断言），无真机盲测；「UniFFI 4.7μs」标注为桌面微基准 | 18.2 M0 |
+| 体积口径 | 「App Clip 7.35KB」标注为**源码字节统计**（跳过 `xtool/`），非编译产物；目标为真实 `.app` < 8MB | 18.2 M0、附录 A.7 |
+| 权威 | 文档头注明版本 v1.7、审计日期，并声明状态与执行顺序以 `development-priorities.md` 为准 | 文档头 |

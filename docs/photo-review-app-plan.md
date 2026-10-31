@@ -1,5 +1,6 @@
 # 照片复盘应用开发方案 v1.3（iOS + 桌面端 macOS / Windows / Linux）
 
+> - **状态（2026-10-30 审计）**：本方案属 **P3、未开始**（见 `development-priorities.md` TASK-13）。文中列出的 `review-engine`、`media-io`、`perception-onnx`、`ReviewApp`、`compose-eval` 等模块与 API **均为设计规格而非已实现代码**（原表述“P0 基础与验证已完成 100%”已被审计推翻）。
 > - **范围**：事后的照片复盘应用。**移动端只做 iOS（iPadOS 顺带支持）；桌面端跨平台，覆盖 macOS、Windows、Linux。**
 > - **关系**：从帮拍相机方案（`camera-assist-app-plan.md`）中拆分出来；两者共用 Rust 规则核心 `compose-core`、阈值和文案。全项目研发优先级与排期对齐见 `development-priorities.md`。版本变化见附录 A。
 > - **约定**：【待验证】表示需要 spike 确认（汇总在第 15 节）；尚未决定的事项汇总在第 2.3 节。文中代码为设计级示例，未经编译。
@@ -172,7 +173,7 @@ camera-assist/
 
 ### 4.1 内容
 
-`compose-core` 是两个应用唯一的规则实现。规则定义、阈值、优先级以 `camera-assist-app-plan.md` 第 7、8 节的算法规格为准；本应用在此基础上增加静态图专用的部分：
+`compose-core` 是两个应用唯一的规则实现。规则定义、阈值、优先级以 `camera-assist-app-plan.md` 第 7、8 节的算法规格为准；本应用在此基础上增加静态图专用的部分。**当前代码事实**：仅 `model`/`geometry`/`classify` 与规则 A–D（12 条）落地，下表中的 `rules`（E–G）、`light`、`optics`、`settings`、`still`、`report` 尚未实现。设计规格如下：
 
 | 模块 | 内容 | 规格来源 | 使用方 |
 |---|---|---|---|
@@ -191,6 +192,8 @@ camera-assist/
 `compose-core` 本身不依赖任何 FFI 框架：UniFFI 的派生宏通过 `uniffi` feature 条件启用（`compose-ffi` 打开该 feature）；`flutter_rust_bridge` 在 `review-bridge` 中通过镜像类型引用同一批结构。
 
 ### 4.2 对外接口（UniFFI 与 flutter_rust_bridge 共用的 API）
+
+> **实现状态**：以下签名块为**设计规格，未实现**（TASK-05）。当前 `compose-ffi` 仅导出少量 `LiveOutputFfi` 字段；`analyze_still`、`aggregate_report`、`Thresholds.still`、`reload(config:)` 等均不存在于代码中。
 
 ```rust
 // compose-core/src/still.rs
@@ -296,7 +299,7 @@ pub fn aggregate_report(items: Vec<StillReport>, cfg: Arc<Config>) -> TripReport
 | 裁切类（`head.cut`、`limbCut.*`、`feet.floating`） | 与帮拍相机相同 | 不可修正，只给"下次这样拍" |
 | `headroom`（太多）、`edge.crowd`、`scale`（太小） | 与帮拍相机相同 | `Crop`：在不切到人的前提下，按 4:3 / 原比例重新裁切；裁切后分辨率低于原图 50% 时不推荐 |
 | `leadRoom`、`placement` | 与帮拍相机相同 | `Crop`：把主体移到三分线；同样受分辨率下限约束 |
-| `level.roll`、`tilt.vertical` | 静态图没有 IMU，**不使用**，由 `still.tilt`、`still.keystone` 代替 | — |
+| `tilt.level`、`tilt.vertical` | 静态图没有 IMU，**不使用**，由 `still.tilt`、`still.keystone` 代替（旧称 `level.roll`，已统一改名为 `tilt.level`） | — |
 | 光线类 | 光向需要拍摄方向：有 `GPSImgDirection` 时才判断顺光、侧光、逆光；没有时只用人脸亮度比判断"逆光脸暗" | 不可修正（提亮交给照片 App 或其他修图工具），只给"下次这样拍" |
 | `distance.distortion` | 由 `focal_35mm` 换算视场角，再用眼距或身高估算距离 | 不可修正，只给"下次切 2× 后退" |
 
@@ -356,7 +359,7 @@ pub fn aggregate_report(items: Vec<StillReport>, cfg: Arc<Config>) -> TripReport
 | 地平线、竖直线 | OpenCV 霍夫直线检测（`opencv` crate），或纯 Rust 实现 | 只需要角度，不需要分割 |
 
 - **推理加速**：macOS 用 CoreML 执行提供程序；Windows 用 DirectML；Linux 有 NVIDIA GPU 时用 CUDA，否则用 CPU。所有系统都以 CPU 结果为准做验收。
-- **模型清单**（`shared/models/manifest.json`）：每个模型记录版本、SHA-256、输入尺寸、许可证、来源链接；构建时校验。
+- **模型清单**（`shared/models/models.json`；`scripts/audit-models.py` 读取该文件做许可证审计）：每个模型记录版本、SHA-256、输入尺寸、许可证、来源链接；构建时校验。
 
 ### 5.4 关节点映射与后端差异
 
@@ -759,7 +762,7 @@ compose-eval diff vision.json onnx.json
 
 | 阶段 | 周 | 内容 | 退出标准 |
 |---|---|---|---|
-| **P0 基础与验证**<br>`[已完成 100%]` | W1–2（与帮拍相机 M0 同一周开始） | Rust workspace、`compose-ffi` → XCFramework 流水线（与帮拍相机共同完成）、CI 矩阵；`compose-core` 骨架与黄金向量格式；spike R1、R2、R3、R7、R9。<br>**超额交付**：纯 Rust A–D 规则提前落地并通过 10 组黄金向量。 | **已通过**：模型与许可证确定（阻断 AGPL-3.0，全量合规）；Spike R2 单核分析 11.6M FPS（1000 张仅需 85.9 μs）；Spike R3 图像解码器架构合规审查通过；UniFFI 4.7μs 极低延迟。 |
+| **P0 基础与验证**<br>`[名义完成 / 实际部分完成]` | W1–2（与帮拍相机 M0 同一周开始） | Rust workspace、`compose-ffi` → XCFramework 流水线（与帮拍相机共同完成）、CI 矩阵；`compose-core` 骨架与黄金向量格式；spike R1、R2、R3、R7、R9。<br>**提前落地**：纯 Rust A–D 规则已实现，黄金向量实为 13 组（`001`–`013`；原表述“10 组”已被审计推翻），校验器当前仅断言 `>= 10`。 | **部分通过（含自断言，见 TASK-02）**：模型与许可证确定（阻断 AGPL-3.0）；Spike R2 11.6M FPS 为合成输入微基准；Spike R3 为静态架构/许可证审查；UniFFI 4.7μs 为桌面侧微基准，iOS 真机未测。原表述“已完成 100% / 已通过”已被审计推翻。 |
 | **P1 共享核心** | W3–10 | W3–4：`model`、`geometry`、`classify`、`config`、`compose-ffi` + `ComposeKit`；W5–7：规则 A–D、合并、仲裁器（与帮拍相机 M2 同步）；W7–8：`still`、`report`；W8–10：`light`、`optics`、规则 E–G、`settings`（与帮拍相机 M4 同步）；黄金向量贯穿全程 | Rust 与 Swift 都通过全部黄金向量；帮拍相机 M2、M4 按时接入 |
 | **P2 桌面引擎** | W6–11 | `perception-onnx`（检测、分割、姿态、人脸、直线，三个系统的加速）、`media-io`（解码、EXIF、缩略图、导出、XMP）、`review-engine`（扫描、队列、SQLite、旅行分组、批次撤销） | 1000 张照片批量分析达标；文件安全专项测试通过 |
 | **P3 应用** | W8–14 | 桌面：导入、网格、详情、批量修正、报告、设置；iOS：首页、网格、详情、PhotoKit 写回、分享扩展、深链接、报告 | 两端主流程走通；`compose-eval` 两个后端都达到 85% 精确率、一致率 ≥ 90% |
@@ -851,6 +854,7 @@ compose-eval diff vision.json onnx.json
 | v1.1 | 帮拍相机决定共用 Rust 核心；排期与帮拍相机对齐 |
 | v1.2 | 两份方案联合评审后的修正与润色 |
 | v1.3 | 开发方案深化评审后的问题修复（见下表） |
+| v1.3+（2026-10-30 审计同步） | 按代码审计校准状态与命名：头部标注 P3 未开始；`shared/models/manifest.json` → `models.json`；`level.roll` → `tilt.level`；`analyze_still` 等签名块标注「未实现（TASK-05）」；14.2 P0 状态改为「名义完成 / 实际部分完成」 |
 
 ### v1.2 修正明细
 

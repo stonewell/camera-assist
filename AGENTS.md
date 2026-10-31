@@ -22,9 +22,9 @@ camera-assist/
 ### `core/` (Rust Workspace)
 - **Role**: Single source of truth for composition rules, geometric reasoning, lighting models, and arbitration.
 - **Modules**:
-  - `compose-core`: Pure Rust composition rule engine (Rules A–G, yaw/pitch classification, multi-subject arbitration). Zero UI or platform dependencies.
+  - `compose-core`: Pure Rust composition rule engine (rules A–D implemented — 12 rules; E–G planned, see TASK-04), yaw/pitch classification, multi-subject arbitration. Zero UI or platform dependencies.
   - `compose-ffi`: UniFFI-based C/Swift binding layer exporting `LiveComposer` and data structures.
-  - `perception-onnx`: Desktop/eval ONNX model inference.
+  - `perception-onnx`: (planned — not yet in the workspace) Desktop/eval ONNX model inference.
 - **Rule**: All core composition and lighting evaluation algorithms must reside here and match golden test vectors.
 
 ### `apple/Packages/` (Modular Swift Packages)
@@ -113,11 +113,11 @@ The unified verification pipeline enforces:
 1. **Rust Format Check**: `cargo fmt --check`
 2. **Clippy Linter**: `cargo clippy --workspace --benches --tests -- -D warnings`
 3. **Rust Workspace Tests**: `cargo test --workspace`
-4. **Golden Vector Runner**: `cargo test -p compose-core --test golden_runner` (validates all 13+ golden test vectors)
+4. **Golden Vector Runner**: `cargo test -p compose-core --test golden_runner` (validates 13 golden test vectors, `001`–`013`; the checker currently asserts only `count >= 10`, TASK-02 tightens it to `== 13` with exact finding-set equality)
 5. **Microbenchmarks SLA**: `cargo bench --workspace -- --test` (engine & FFI latency SLAs)
 6. **Model Manifest Audit**: `python3 scripts/audit-models.py`
 7. **App Clip Isolation & Size**: `python3 scripts/check-appclip-size.py` (verifies zero Rust/UniFFI leakage and bundle size budget)
-8. **Swift Parity & Tests**: `scripts/run-swift-tests.sh` (validates Swift package declarations and schema parity)
+8. **Swift Parity & Tests**: `scripts/run-swift-tests.sh` (on Linux this currently runs `validate-swift-parity.py`, i.e. structural/field-presence checks — it does **not** execute `swift test`; only macOS with a Swift toolchain runs the real package tests)
 9. **Desktop Decoders Audit**: `python3 scripts/audit-image-decoders.py`
 10. **24MP Capture Benchmark**: `python3 scripts/evaluate-capture-quality.py --self-test`
 
@@ -126,4 +126,8 @@ To verify App Clip compliance independently:
 ```bash
 python3 scripts/check-appclip-size.py
 ```
-This script scans all Swift/C source files in `apple/CameraAppClip` and `apple/Packages/SyncKit` for forbidden Rust/UniFFI tokens and verifies the uncompressed payload size is safely within budget (< 15 MB).
+This script scans all Swift/C source files in `apple/CameraAppClip` and `apple/Packages/SyncKit` for forbidden Rust/UniFFI tokens and verifies the uncompressed payload size is safely within budget (< 15 MB). Note: it currently sums **source bytes** and skips the `xtool/` build directory, so it is not a compiled-artifact measurement — check the real `.app` with `du -sh` separately (TASK-02).
+
+### ComposeKit Linking Constraint
+
+`ComposeKit` must be linked against the Rust static library (`libcompose_ffi.a`); when it is missing, `LiveComposer` silently falls back to mock mode. Any verification run where `LiveComposer.isMockMode == true` must be treated as **failed** (TASK-01) — mock-mode results are never acceptable as acceptance evidence.
