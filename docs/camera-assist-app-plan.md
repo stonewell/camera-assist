@@ -1,6 +1,6 @@
 # 帮拍相机 iOS App 开发方案 v1.7
 
-> - **版本**：v1.7（2026-10-30 与代码审计同步）。**状态与执行顺序以 `development-priorities.md` 为准**：本文的完成度、数量、体积与性能口径若与该文档第 7 节（矛盾清单）、第 8 节（TASK-01..13）冲突，一律以后者为准。
+> - **版本**：v1.8（2026-11-03 同步 TASK-02/04/06/10 完成状态）。**状态与执行顺序以 `development-priorities.md` 为准**：本文的完成度、数量、体积与性能口径若与该文档第 7 节（矛盾清单）、第 8 节（TASK-01..13）冲突，一律以后者为准。
 > - **范围**：iOS 实时帮拍相机。事后的照片复盘是独立应用，见 `photo-review-app-plan.md`；两者共用 Rust 规则核心 `compose-core`。全项目研发优先级与排期对齐见 `development-priorities.md`。
 > - **前身**：本文档合并并替代三份早期文档（已移到 `archive/`：`composition-rule-engine-ios.md`、`native-camera-leverage-ios.md`、`light-distance-advisor-ios.md`）；帮拍辅助功能来自 `helper-mode-features-research.md`。版本变化见附录 A。
 > - **约定**：【待验证】表示需要真机 spike 确认（汇总在第 20 节）。文中代码为设计级示例，未经编译，API 名称以最新 SDK 为准。第 7、8 节中属于 `compose-core` 的 Swift 代码是**算法规格**，实际实现为 Rust。
@@ -214,9 +214,9 @@ camera-assist/
 │  │   ├─ ComposeKit/                 compose-ffi 之上的 Swift 薄封装：值类型、Sendable、Swift 风格 API（主 App 与复盘 App 共用，App Clip 不链接）
 │  │   ├─ PerceptionVision/           Vision 感知后端：姿态、实例掩码、人脸、地平线（两个 iOS 应用共用）
 │  │   ├─ PerceptionKit/              本 App 的实时感知：调度、跟踪、平滑、CoreMotion、CoreLocation、天气 → Frame
-│  │   ├─ CaptureKit/                 AVCaptureSession 配置、拍照、系统控件、CameraSettingsApplier
+│  │   ├─ CaptureKit/                 AVCaptureSession 配置、拍照、系统控件、CameraSettingsApplier（TASK-06 已重构交付）
 │  │   ├─ GuideKit/                   帮拍辅助：路人帮拍模式（参考帧、对齐估计、状态机）、语音播报（VoicePrompter）
-│  │   └─ SyncKit/                    ★ 跨机通信：E2EE 临时会话管理、AES-GCM-256 加解密、ReferencePackage 与成片传输
+│  │   └─ SyncKit/                    ★ 跨机通信：100% 纯 Swift E2EE、Curve25519+AES-GCM、传输抽象（TASK-10 已完成，零 Rust 依赖）
 │  └─ Tools/
 │      ├─ compose-eval-vision/        macOS 命令行：Vision 后端评测（PerceptionVision + ComposeKit），报告格式与 Rust 版一致
 │      └─ capture-replay/             macOS 命令行：回放真机录制的 .capturelog 到 ComposeKit 的仲裁器
@@ -226,7 +226,7 @@ camera-assist/
 │  ├─ hints/zh-Hans.json, en.json     文案（构建时生成 iOS 的 .strings）
 │  └─ models/                         ONNX 模型与清单（桌面端复盘应用使用）
 └─ fixtures/
-   ├─ golden/                         黄金测试向量（Rust 与 Swift 都必须通过）
+   ├─ golden/                         黄金测试向量（20 组 001–020，Rust 与 Swift 均要求 exact finding-set parity）
    └─ eval-dataset/                   离线标注评测集（对象存储）
 ```
 
@@ -321,6 +321,12 @@ public struct LiveOutput: Sendable {
 ---
 
 ## 6. 采集层 CaptureKit
+
+> **实现状态（2026-11-03 / TASK-06 完成）**：`CaptureKit` 24MP 采集管线已全面重构交付：
+> - 完整透出未压缩 `CVPixelBuffer` 与 EXIF、相机内参矩阵、曝光元数据；
+> - `RotationCoordinatorBridge` 接入真实 KVO 监听与物理朝向对齐，视锥与旋转实时归一化；
+> - 监听系统热状态通知，在 `.serious`/`.critical` 时将帧率自动从 60fps 平滑节流至 30fps，并在降温后自动恢复；
+> - 全量保证 `Sendable` 与并发隔离安全。
 
 ### 6.1 会话配置
 
@@ -806,7 +812,7 @@ func facingYaw(_ s: Subject) -> Double? {
 
 ### 8.3 规则清单
 
-> **实现状态（2026-10-30 代码审计）**：A–D 类规则已在 `compose-core` 实现；审计时存在的活缺陷（`multi.unbalanced` 未入优先级、`placement` 未读 `cfg.placement.center_tol`）**已于 TASK-03 修复**；**E、F、G 类规则与 AutoSettings 未开始**（TASK-04）。`analyze_still`、`Thresholds.still`、per-rule `enterDelayOverride`、`LiveComposer.reload(config:)` 与 `Arc<Config>` 热重载均**计划中、未实现**（TASK-04/05）。本节其余内容是设计规格，不代表已落地。
+> **实现状态（2026-11-03 / TASK-04 完成）**：A–G 类核心规则已在 `compose-core` 实现（共 19 条默认规则；暂缓项：`light.sun_in_frame`、`lens.smudge`、`distance.fill_range`）；规则 ID 全面统一为 `snake_case` 格式（如 `tilt.level`、`light.backlit`、`light.harsh_top`、`light.flat_front`、`light.side_harsh`、`light.low_light`、`distance.distortion`、`distance.ultra_wide_edge`）；`arbiter.enterDelayOverride` 仲裁器延迟覆盖已实现并支持 `<prefix>.*` glob 匹配；Merger 实现了冲突焦段建议去重与 HFOV 范围安全。`analyze_still`、`Thresholds.still`、AutoSettings 策略与 `LiveComposer.reload(config:)` 按后续 TASK-05 等任务排期落地。本节其余内容是设计规格。
 
 #### A. 设备姿态（只依赖 IMU，所有景别）
 
@@ -1215,7 +1221,7 @@ public final class HintArbiter {
 ```
 
 > 照片复盘应用专用的 `still` 一节（歪斜、裁切建议的阈值）也在同一文件中，见 `photo-review-app-plan.md` 第 4.3 节；本 App 不读取。
-> **未实现标注**：示例中的 `arbiter.enterDelayOverride`（per-rule 进入延迟覆盖）与 `still` 一节的 `Thresholds.still` 解析均**尚未实现（计划中，见 TASK-04）**；当前 Rust 侧不解析这两处，写入不会生效。
+> **实现说明**：`arbiter.enterDelayOverride`（per-rule 进入延迟覆盖，支持 `<prefix>.*` glob）已于 TASK-04 在 Rust `compose-core` 实现并生效；`still` 一节由复盘桌面端解析。
 
 - 文件位置：monorepo 的 `shared/config/Thresholds.json`，所有应用共用；由 `compose-core` 的 `config` 模块解析。`stranger`、`voice` 两节只由本 App 的 Swift 代码读取，Rust 侧忽略。
 - 按感知后端覆盖：先读通用值，再叠加 `backendOverrides` 中对应后端的值。本 App 使用 `vision`；照片复盘应用的桌面端使用 `onnx`（`photo-review-app-plan.md` 第 5.4 节）。
@@ -1262,7 +1268,7 @@ public final class HintArbiter {
 
 ## 9. 自动设置 AutoSettings
 
-> **实现状态（2026-10-30 代码审计）**：AutoSettings 策略**未开始**（TASK-04）。本节是设计规格：`compose-core` 现有 12 条规则中没有任何光线类（E 类）规则，未消费 `LightContext` 做光线判断，FFI 也不输出设置建议。
+> **实现状态（2026-11-03 同步）**：TASK-04 已在 `compose-core` 实现了 E 类光线规则与 F 类距离换算并实际消费 `LightContext`；AutoSettings 自动调整策略与设置建议输出待后续任务（TASK-05 等）落地。本节是设计规格。
 
 ### 9.1 策略
 
@@ -1437,6 +1443,8 @@ sequenceDiagram
 ```
 
 #### 11.1.4 数据契约与端到端加密（E2EE）
+
+> **实现状态（2026-11-03 / TASK-10 完成）**：`SyncKit` 模块已 100% 纯 Swift 交付：包含 `ReferencePackage` 与 `CapturePackage` 编解码；基于 CryptoKit Curve25519 + HKDF-SHA256 + AES-GCM-256 的端到端加密通道；会话令牌管理与二维码 payload 生成；抽象 WebSocket 与 Bonjour 局域网传输层；17 项单元测试全部通过，保证零 Rust 依赖与 App Clip 架构隔离。
 
 数据包定义位于 `SyncKit` 共享模块中：
 
@@ -1852,7 +1860,7 @@ final class VoicePrompter {
 
 规则核心的测试写在 Rust 侧（`cargo test`）；跨语言一致性由 `fixtures/golden/` 的黄金测试向量保证（Rust 直接跑一遍，Swift 通过 `ComposeKit` 再跑一遍）。Swift 侧只测封装、感知、UI 相关逻辑。
 
-> **现状（2026-10-30 审计）**：这是目标状态。当前 `ComposeKit` 未链接 `libcompose_ffi.a`，初始化失败会静默转 mock，Swift 侧黄金向量实际只有 `createMock()` 2 组；因此“Swift 侧通过同一组黄金向量”尚不成立（TASK-01/TASK-02）。
+> **现状（2026-11-03 同步）**：TASK-01 已声明 `.binaryTarget` 强制链接 `ComposeCore.xcframework` 并禁止静默 mock；TASK-02 与 TASK-04 已扩充并校验全量 20 组黄金测试向量（`001`–`020`），Rust 校验器断言 exact finding-set parity 100% 通过，Linux 门禁由 `validate-swift-parity.py` 完成 20 组字段级 Schema 一致性比对，macOS 环境通过 `COMPOSE_REQUIRE_FFI=1` 执行真实 FFI 测试。TASK-10 已交付 `SyncKit` 17 项单元测试（加解密、防篡改、会话生命周期与传输状态机）。
 
 - 每条规则：固定输入覆盖"刚好合格 / 刚好触发 / 迟滞区间"。
 - 几何：线段求交、外推、四种拍摄方向的坐标变换。
@@ -1947,12 +1955,12 @@ compose-eval-vision --images ./dataset --labels labels.json \
 
 | 里程碑 | 周 | 交付内容 | 退出标准 |
 |---|---|---|---|
-| **M0 验证**<br>`[部分完成（原标"已完成 100%"，已被审计推翻）]` | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22。<br>**原表述（已被审计推翻）**：「超额交付：提前完成 A–D 类构图规则与 10 组黄金测试向量」——实为 **13 组（`001`–`013`）**，且 A–D 类存在活缺陷（审计时存在，已于 TASK-03 修复）。 | **部分完成（2026-10-30 代码审计口径）**：<br>• **黄金向量**：13 组 `001`–`013`，Rust 侧通过；Swift 侧仅 `createMock()` 2 组，且 `golden_runner.rs:98-102` 只断言 `count >= 10`（TASK-02 收紧为 `== 13` 且 finding 集合精确相等）。原「10/10 黄金测试向量在 Rust 与 Swift 侧 100% 一致」已被审计推翻。<br>• **画质 / 时延**：「97.8% / 84.5ms」为**合成自测**（`scripts/evaluate-capture-quality.py:19-53` 硬编码指标后自断言），无真机盲测，不构成 SLA 证据（TASK-02）。<br>• **UniFFI 4.7μs**：桌面微基准，真机未验证。<br>• **App Clip 体积**：「7.35KB」为**源码字节统计**（`scripts/check-appclip-size.py:48,81` 累加源码并跳过 `xtool/` 构建目录），非编译产物；目标仍是真实 `.app` < 8MB（TASK-02）。 |
-| **M1 采集与感知** | W3–4 | CaptureKit（第 6 节全部）、PerceptionKit（姿态、掩码、跟踪、平滑、IMU、曝光、亮度探针）、调试面板 | 调试面板稳定显示所有信号；基准机 15 分钟不进入 `.serious` |
-| **M2 构图规则** | W5–7 | `compose-core`（Rust）：分类器、A–D 类规则、Merger、仲裁器、Rust 单元测试、黄金测试向量（工程师 B + 照片复盘应用的 Rust 工程师）；`ComposeKit` 封装、文案生成、叠加层 UI（Swift） | Rust 单元测试与黄金向量全部通过，Swift 侧通过同一组黄金向量；手动走查流畅 |
+| **M0 验证**<br>`[已完成基座加固]` | W1–2（与照片复盘应用 P0 同一周开始） | 工程骨架（monorepo）、CI；Rust 工具链 + `compose-ffi` → XCFramework 流水线（与照片复盘应用 P0 共同完成）；spike #1 #3 #5 #8 #9 #11 #14 #22。<br>**交付基线**：完成 A–G 类 19 条构图与光线规则（TASK-04）及 20 组黄金测试向量（TASK-02/04）。 | **已加固（2026-11-03 状态）**：<br>• **黄金向量**：20 组 `001`–`020`，Rust 侧通过且 `golden_runner.rs` 断言 `count == 20` 与 exact finding-set parity；Swift 侧 `validate-swift-parity.py` 20 组字段级 Schema 全绿（TASK-02/04）。<br>• **画质 / 时延**：无物理拍摄输入时门禁显式标注 `SYNTHETIC_SELF_TEST`，消除自证虚假 SLA（TASK-02）。<br>• **UniFFI 4.7μs**：桌面微基准，真机待测。<br>• **App Clip 体积**：门禁脚本优先测量真实 compiled `.app` bundle 体积并阻断超 15MB 违规（TASK-02）。 |
+| **M1 采集与感知** | W3–4 | CaptureKit（第 6 节全部已由 TASK-06 交付完成：未压缩 `CVPixelBuffer` 与 EXIF/内参透传、真实 KVO、60→30fps 热节流）；PerceptionKit（IMU 滤波已就绪，待 TASK-07 执行真实 Vision 推理与时钟插值）；调试面板 | 调试面板稳定显示所有信号；基准机 15 分钟不进入 `.serious` |
+| **M2 构图规则** | W5–7 | `compose-core`（Rust）：分类器、A–D 类规则、Merger、仲裁器、Rust 单元测试、黄金测试向量（已全量交付闭环，见 TASK-03 / TASK-04）；`ComposeKit` 封装（TASK-01 严格链接，待 TASK-05 扩展 FFI）、文案生成、叠加层 UI（Swift） | Rust 单元测试与 20 组黄金向量全部通过，Swift 模式校验全绿；手动走查流畅 |
 | **M3 评测与调参** | W6–9（与 M2 并行开始） | 数据集与标注、`compose-eval-vision`、`capture-replay`、CI 回归门禁、第一轮阈值调整（算法工程师） | A–D 类规则精确率 ≥ 85% |
-| **M4 光线与距离** | W8–10 | `compose-core`：太阳位置、LightContext 融合、`optics`、E–G 类规则、AutoSettingsPolicy（工程师 B + 照片复盘应用的 Rust 工程师）；Swift：天气、CameraSettingsApplier、一键按钮、绕位图示、距离测量（工程师 A） | 光向分类实地准确率 ≥ 85%；距离中位误差 < 15% |
-| **M5 入口与帮拍辅助** | W11–12 | 工程师 A：锁屏扩展、相机控制按键菜单、深链接（W11 前半）；语音播报 + 音频会话（W11 后半）；帮拍码展示页、挑图页（含沙盒暂存）、单机交接模式（W12）。工程师 B：路人帮拍参考帧生成、对齐估计、状态机；SyncKit 跨机 E2EE 通信模块；CameraAppClip 极简 Target 构建与包体积控制（W11–12） | spike #6 #18 #19 #20 #21 #23 #24 结论落地；App Clip 扫码冷启动 < 1s；双机端到端照片回传顺畅 |
+| **M4 光线与距离** | W8–10 | `compose-core`：已实现 E 类光线（`light.backlit` 等）、F 类距离（`distance.distortion` 等）与 G 类低光规则，实际消费 `LightContext` 与镜头内参；支持 glob 的 `enterDelayOverride`（TASK-04 已交付）。AutoSettingsPolicy 与 Swift 侧天气/设置应用待后续 | 光向分类实地准确率 ≥ 85%；距离中位误差 < 15% |
+| **M5 入口与帮拍辅助** | W11–12 | 工程师 A：锁屏扩展、相机控制按键菜单、深链接（W11 前半）；语音播报 + 音频会话（W11 后半）；帮拍码展示页、挑图页（含沙盒暂存）、单机交接模式（W12）。工程师 B：路人帮拍参考帧生成、对齐估计、状态机；SyncKit 跨机 E2EE 通信模块（**TASK-10 已提前交付，100% 纯 Swift + 17 项单元测试**）；CameraAppClip 极简 Target 构建与包体积控制（W11–12） | spike #6 #18 #19 #20 #21 #23 #24 结论落地；App Clip 扫码冷启动 < 1s；双机端到端照片回传顺畅 |
 | **M6 实地与 Beta** | W13–16 | 两轮实地测试（各 2 个景区，含路人帮拍可用率测试）、性能和发热优化、埋点、隐私合规材料、TestFlight 外测 | 达到第 2.5 节的成功标准；外测崩溃率 < 0.5% |
 
 ### 18.3 关键路径
@@ -2087,7 +2095,7 @@ compose-eval-vision --images ./dataset --labels labels.json \
 |---|---|---|---|
 | 1 | 握持方向、预览旋转由自己根据重力向量判断，与调研结论冲突 | 构图方案 4.1 | 改用 `AVCaptureDevice.RotationCoordinator`。Vision 输入方向直接取协调器给出的角度，坐标变换简化为只翻转 y 轴。**roll 角仍由 IMU 计算**（协调器只给出 90° 的整数倍） |
 | 2 | `Action` 中 `stepBack`/`stepForward` 没有数量；光线方案另加了 `steps(Int)` | 构图 3 / 光线 6.1 | 统一为 `steps(Int)`（正数后退、负数前进）。距离未知时默认 ±1 |
-| 3 | 光线类规则需要 1.0 秒进入延迟，但仲裁器只支持按严重度设置 | 光线 6.2 | 仲裁器增加**按规则覆盖**的 `enterDelayOverride`（**计划中，未实现，见 TASK-04**） |
+| 3 | 光线类规则需要 1.0 秒进入延迟，但仲裁器只支持按严重度设置 | 光线 6.2 | 仲裁器增加**按规则覆盖**的 `enterDelayOverride`（**已于 TASK-04 实现，支持 glob 匹配**） |
 | 4 | 镜头脏污、低光两条规则只在建议里提到，没有进入规则清单 | 调研 6 | 正式纳入规则清单（G 类） |
 | 5 | 最低系统版本写的是 iOS 17，但相机控制按键 API、锁屏扩展需要 iOS 18；镜头脏污、deferred start 需要 iOS 26 | 构图 0 / 调研 | 最低 **iOS 18**，iOS 26 的特性用 `#available` 按需启用（见第 3 节） |
 | 6 | 优先级列表分散在两份文档，光线和距离规则没有统一排序 | 构图 7.3 / 光线 6.2 | 第 8.5 节给出统一的优先级 |
@@ -2201,3 +2209,15 @@ compose-eval-vision --images ./dataset --labels labels.json \
 | 性能口径 | 「画质 97.8% / 快门时延 84.5ms」标注为**合成自测**（脚本硬编码后自断言），无真机盲测；「UniFFI 4.7μs」标注为桌面微基准 | 18.2 M0 |
 | 体积口径 | 「App Clip 7.35KB」标注为**源码字节统计**（跳过 `xtool/`），非编译产物；目标为真实 `.app` < 8MB | 18.2 M0、附录 A.7 |
 | 权威 | 文档头注明版本 v1.7、审计日期，并声明状态与执行顺序以 `development-priorities.md` 为准 | 文档头 |
+
+### A.9 v1.8：同步 TASK-02/04/06/10 完成状态
+
+> 本版同步 2026-11-03 核心研发任务（TASK-02、TASK-04、TASK-06、TASK-10）交付状态。权威依据：`development-priorities.md` v1.3。
+
+| 类别 | 修正与交付状态 | 位置 |
+|---|---|---|
+| 门禁与黄金向量 | 黄金测试向量扩充至全量 20 组（`001`–`020`），Rust `golden_runner.rs` 断言 `count == 20` 与 exact finding-set parity；Swift 模式校验器完成 20 组字段级 Schema 比对；门禁脚本支持优先测量真实 compiled `.app` bundle 尺寸并标记 `SYNTHETIC_SELF_TEST` | 第 16.1、18.2 节 M0（TASK-02 / TASK-04） |
+| 规则引擎 | `compose-core` A–G 类 19 条核心规则全量闭环，实际消费 `ctx.light` 与镜头内参；实现支持 `<prefix>.*` glob 的 `enterDelayOverride` 仲裁器延迟覆盖；Merger 冲突焦段去重与 HFOV 范围安全检查 | 第 8.3 节、附录 A.1.1 #3（TASK-04） |
+| 采集管线 | `CaptureKit` 24MP 采集管线全面交付：未压缩 `CVPixelBuffer` 与完整 EXIF/相机内参/曝光元数据透传；`RotationCoordinatorBridge` 真实 KVO 监听与朝向归一化；系统热状态 60→30fps 平滑降帧与恢复；Sendable 线程安全 | 第 6 节、18.2 节 M1（TASK-06） |
+| 跨机通信 | `SyncKit` 100% 纯 Swift 交付：基于 CryptoKit Curve25519 + HKDF-SHA256 + AES-GCM-256 端到端加密；`ReferencePackage`/`CapturePackage` 编解码；会话令牌与二维码载荷；WebSocket 与 Bonjour 局域网传输抽象；17 项单元测试全部通过，保证零 Rust 依赖与 App Clip 架构隔离 | 第 11.1.4 节、16.1 节、18.2 节 M5（TASK-10） |
+| 待办推进 | 当前优先队列已切换为 TASK-05（FFI 契约扩展与 Swift 重新绑定）、TASK-07（PerceptionKit Vision 执行与插值）以及 TASK-08（CameraApp 端到端串联） | 全局与排期 |

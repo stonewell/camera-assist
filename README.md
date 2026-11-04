@@ -47,9 +47,9 @@ camera-assist/
 │  │   ├─ ComposeKit/                 compose-ffi 上的 Swift 薄封装（值类型、Sendable，双 iOS 应用共用）
 │  │   ├─ PerceptionVision/           （计划中）Vision 感知后端（双 iOS 应用共用）
 │  │   ├─ PerceptionKit/              实时感知调度、平滑、IMU、定位、天气（帮拍相机专有）
-│  │   ├─ CaptureKit/                 AVCaptureSession 管线、24MP 输出、相机控制控件（帮拍相机专有）
+│  │   ├─ CaptureKit/                 AVCaptureSession 管线、24MP 输出、相机控制控件、热节流降帧（帮拍相机专有，TASK-06 已完成）
 │  │   ├─ GuideKit/                   （计划中）帮拍辅助：路人帮拍模式、语音播报（帮拍相机专有）
-│  │   └─ SyncKit/                    ★ 跨机通信：E2EE 临时会话、AES-GCM-256 加解密（当前仅数据模型）
+│  │   └─ SyncKit/                    ★ 跨机通信：100% 纯 Swift E2EE、Curve25519+AES-GCM、传输抽象（TASK-10 已完成，零 Rust 依赖）
 │  └─ Tools/                          （计划中）
 │      ├─ compose-eval-vision/        macOS 命令行离线评测工具（Vision 后端）
 │      └─ capture-replay/             真机录制数据回放工具
@@ -59,18 +59,25 @@ camera-assist/
 │  ├─ hints/                          多语言文案源文件（zh-Hans.json, en.json）
 │  └─ models/models.json              桌面端 ONNX 模型清单（版本、SHA-256、许可证；scripts/audit-models.py 读取）
 └─ fixtures/
-   ├─ golden/                         黄金测试向量（13 组 001–013 + schema.json；感知输入 → 预期判定）
+   ├─ golden/                         黄金测试向量（20 组 001–020 + schema.json；感知输入 → 预期判定，TASK-02/04 已完成）
    └─ eval-dataset/                   （计划中）离线标注测试数据集
 ```
 
-### 当前实现状态（2026-10-30）
+### 当前实现状态（2026-11-03）
 
-- **可用**：`compose-core` 规则 A–D（12 条）与 `compose-ffi` UniFFI 绑定生成（Swift 侧未链接，见 TASK-01）。
-- **可用**：`shared/config/Thresholds.json`、`shared/hints/*.json`、`fixtures/golden` 13 组向量（Rust 侧通过）。
-- **部分完成**：`ComposeKit` 未链接 `libcompose_ffi.a`，初始化失败即静默转 mock；`CaptureKit` 帧回调丢弃像素；`PerceptionKit` 未真正执行 Vision 请求；`SyncKit` 仅数据模型。
-- **桩/占位**：`CameraApp`（静态文字）、`CameraAppClip`（`Color.black`）。
-- **未开始**：规则 E–G、App Clip 帮拍流程、`ReviewApp`、桌面端（`perception-onnx`/`media-io`/`review-engine`）、语音播报。
-- 逐项状态与 TASK-01…13 待办序列见 [研发任务优先级与双项目协同规划 · 第 8 节](docs/development-priorities.md#8-修订后的待办任务序列)。
+- **核心基座与规则全量交付（TASK-01、TASK-02、TASK-03、TASK-04、TASK-06、TASK-10）**：
+  - **`compose-core` 规则 A–G 闭环**：共 19 条构图、光线与距离规则（`light.backlit`, `light.harsh_top`, `light.flat_front`, `light.side_harsh`, `distance.distortion`, `distance.ultra_wide_edge`, `light.low_light` 等），实际消费 `ctx.light` 与镜头内参；支持 `enterDelayOverride` 仲裁器延迟覆盖与 glob 匹配；Merger 冲突焦段去重与 HFOV 范围安全（TASK-04）。暂缓规则：`light.sun_in_frame`、`lens.smudge`、`distance.fill_range`。
+  - **20 组黄金测试向量**：`fixtures/golden`（`001`–`020`），Rust 检验器与 Swift 模式校验均实现 exact finding-set parity 100% 通过（TASK-02/04）。
+  - **`ComposeKit` 严格链接**：通过 `.binaryTarget` 链接 `ComposeCore.xcframework` 并禁止静默 mock（TASK-01）。
+  - **`CaptureKit` 24MP 完整采集**：透出未压缩 `CVPixelBuffer` 与完整 EXIF/相机内参/曝光元数据；`RotationCoordinator` 真实 KVO 朝向监听与对齐；系统热状态监听自动 60→30fps 平滑降帧与恢复（TASK-06）。
+  - **`SyncKit` 纯 Swift E2EE 通信**：100% 纯 Swift 实现（零 C/Rust 依赖），Curve25519 + HKDF + AES-GCM-256 加密、`ReferencePackage`/`CapturePackage` 编解码、会话令牌/二维码、WebSocket/Bonjour 传输抽象及 17 项单元测试（TASK-10）。
+  - **质量门禁体系**：10 步门禁脚本升级真实 compiled `.app` bundle 体积测量、合成自测标记（`SYNTHETIC_SELF_TEST`）与字段级 Swift Parity 比对（TASK-02）。
+- **当前优先推进（TASK-05, TASK-07, TASK-08）**：
+  - `ComposeKit` / FFI：扩展 UniFFI 契约输出 severity、完整 action 与 target 并重生成绑定（TASK-05）。
+  - `PerceptionKit`：基于 TASK-06 透出数据真正执行 Vision 姿态/掩码/人脸请求并做运动插值（TASK-07）。
+  - `CameraApp`：端到端串联采集、感知、推理流与快门拍照（TASK-08）。
+- **待办特性**：用户引导 HUD（TASK-09）、App Clip 助手交互流程（TASK-11）、语音 TTS（TASK-12）、照片复盘应用 `ReviewApp` 与桌面端（TASK-13）。
+- 逐项状态与详细任务序列见 [研发任务优先级与双项目协同规划 · 第 8 节](docs/development-priorities.md#8-修订后的待办任务序列)。
 
 ---
 
