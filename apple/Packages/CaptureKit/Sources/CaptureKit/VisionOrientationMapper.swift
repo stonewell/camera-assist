@@ -1,5 +1,8 @@
 import Foundation
+
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 #if canImport(ImageIO)
 import ImageIO
@@ -9,7 +12,11 @@ import ImageIO
 public enum VisionOrientationMapper {
     /// Maps back-camera capture rotation angle to CGImagePropertyOrientation.
     public static func visionOrientation(captureAngle: CGFloat) -> CGImagePropertyOrientation {
-        switch Int(captureAngle) {
+        guard !captureAngle.isNaN && !captureAngle.isInfinite else {
+            return .up
+        }
+        let normalized = Int(((captureAngle.rounded()).truncatingRemainder(dividingBy: 360.0) + 360.0).truncatingRemainder(dividingBy: 360.0))
+        switch normalized {
         case 90:
             return .right      // Portrait upright
         case 180:
@@ -18,6 +25,22 @@ public enum VisionOrientationMapper {
             return .left       // Portrait upside down
         default:
             return .up         // 0: Landscape right
+        }
+    }
+
+    /// Maps CGImagePropertyOrientation back to capture rotation angle in degrees.
+    public static func captureAngle(for orientation: CGImagePropertyOrientation) -> CGFloat {
+        switch orientation {
+        case .right:
+            return 90.0
+        case .down:
+            return 180.0
+        case .left:
+            return 270.0
+        case .up:
+            return 0.0
+        default:
+            return 90.0
         }
     }
 

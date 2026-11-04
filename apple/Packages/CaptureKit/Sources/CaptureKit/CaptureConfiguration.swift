@@ -1,5 +1,37 @@
 import Foundation
+
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
+
+#if !os(Linux) && canImport(CoreFoundation)
+import CoreFoundation
+#else
+public func CFAbsoluteTimeGetCurrent() -> Double {
+    Date().timeIntervalSinceReferenceDate
+}
+#endif
+
+#if canImport(ImageIO)
+import ImageIO
+#else
+public enum CGImagePropertyOrientation: UInt32, Sendable {
+    case up = 1
+    case upMirrored = 2
+    case down = 3
+    case downMirrored = 4
+    case leftMirrored = 5
+    case right = 6
+    case rightMirrored = 7
+    case left = 8
+}
+#endif
+
+#if canImport(CoreVideo)
+import CoreVideo
+#else
+public typealias CVPixelBuffer = AnyObject
+#endif
 
 #if canImport(AVFoundation)
 import AVFoundation
@@ -61,9 +93,19 @@ public enum CameraLensType: String, Sendable, CaseIterable {
 }
 
 /// Thermal state reflecting hardware load and throttling policies.
-public enum CameraThermalState: String, Sendable {
+public enum CameraThermalState: String, Sendable, CaseIterable {
     case nominal
     case fair
     case serious
     case critical
+
+    /// Whether this thermal state requires frame rate throttling.
+    public var isThrottled: Bool {
+        self == .serious || self == .critical
+    }
+
+    /// Target frame rate under this thermal state (60 FPS nominal, 30 FPS throttled).
+    public var targetFrameRate: Int {
+        isThrottled ? 30 : 60
+    }
 }
