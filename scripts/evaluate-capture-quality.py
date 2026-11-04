@@ -12,10 +12,11 @@ import sys
 def run_self_test() -> int:
     print("==================================================================")
     print(" Spike #1: Camera Capture Pipeline Quality & Latency Benchmark")
-    print(" Mode: Self-Test / Synthetic Benchmark")
+    print(" Mode: [SYNTHETIC_SELF_TEST] Simulated Synthetic Benchmark")
+    print(" Notice: Using simulated metrics baseline; no physical capture inputs.")
     print("==================================================================")
 
-    # Simulated capture metrics for 24MP capture
+    # Simulated capture metrics for 24MP capture (SYNTHETIC_SELF_TEST baseline)
     native_metrics = {
         "width": 5712,
         "height": 4284,
@@ -37,9 +38,9 @@ def run_self_test() -> int:
     sharpness_ratio = (assist_metrics["sharpness_score"] / native_metrics["sharpness_score"]) * 100.0
     dr_ratio = (assist_metrics["dynamic_range_ev"] / native_metrics["dynamic_range_ev"]) * 100.0
 
-    print(f" Target Resolution:      24.0 MP (5712 x 4284)")
-    print(f" Camera Assist Output:   {assist_metrics['width']} x {assist_metrics['height']} ({assist_metrics['megapixels']:.2f} MP)")
-    print(f" Native Camera Output:   {native_metrics['width']} x {native_metrics['height']} ({native_metrics['megapixels']:.2f} MP)")
+    print(f" Target Resolution:      24.0 MP (5712 x 4284) [SYNTHETIC_SELF_TEST]")
+    print(f" Camera Assist Output:   {assist_metrics['width']} x {assist_metrics['height']} ({assist_metrics['megapixels']:.2f} MP) [SYNTHETIC_SELF_TEST]")
+    print(f" Native Camera Output:   {native_metrics['width']} x {native_metrics['height']} ({native_metrics['megapixels']:.2f} MP) [SYNTHETIC_SELF_TEST]")
     print("------------------------------------------------------------------")
     print(f" Metric                  Assist      Native      Ratio       SLA Requirement")
     print("------------------------------------------------------------------")
@@ -52,7 +53,8 @@ def run_self_test() -> int:
     assert sharpness_ratio >= 95.0, f"Sharpness ratio {sharpness_ratio:.1f}% below 95% threshold"
     assert assist_metrics["shutter_lag_ms"] < 100.0, f"Shutter lag {assist_metrics['shutter_lag_ms']} ms exceeds 100 ms limit"
 
-    print("[SUCCESS] Spike #1 quality verification passed all P0 SLA gates.")
+    print("[SYNTHETIC_SELF_TEST] Spike #1 simulated baseline verification passed all SLA gates.")
+    print("[SYNTHETIC_SELF_TEST] Real camera evaluation requires live photo captures (--assist and --native).")
     return 0
 
 def main() -> int:

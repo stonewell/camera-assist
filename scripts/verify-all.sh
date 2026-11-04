@@ -34,9 +34,9 @@ echo "[Step 3/10] Running all unit and integration tests (cargo test --workspace
 (cd "${CORE_DIR}" && cargo test --workspace)
 echo "✓ All workspace tests passed."
 
-# Step 4: Golden Vector Regression (10+ vectors)
+# Step 4: Golden Vector Regression (exact vectors, exact finding-set parity)
 echo ""
-echo "[Step 4/10] Running golden vector test runner (10+ vectors)..."
+echo "[Step 4/10] Running golden vector test runner (exact finding-set parity)..."
 (cd "${CORE_DIR}" && cargo test -p compose-core --test golden_runner)
 echo "✓ Golden vectors regression passed."
 
@@ -54,7 +54,7 @@ echo "✓ Model manifest license audit passed."
 
 # Step 7: App Clip Architecture Decoupling & Size Verification
 echo ""
-echo "[Step 7/10] Verifying App Clip zero-Rust decoupling and size ceiling..."
+echo "[Step 7/10] Verifying App Clip zero-Rust decoupling and compiled .app bundle size ceiling..."
 python3 "${REPO_ROOT}/scripts/check-appclip-size.py"
 echo "✓ App Clip decoupling and size ceiling verified."
 
@@ -70,11 +70,11 @@ echo "[Step 9/10] Auditing desktop image decoders (JPEG, HEIC, RAW)..."
 python3 "${REPO_ROOT}/scripts/audit-image-decoders.py"
 echo "✓ Image decoders licensing and architecture audit passed."
 
-# Step 10: Spike #1 24MP Capture Pipeline Quality & Latency Benchmark
+# Step 10: Spike #1 24MP Capture Pipeline Quality & Latency Benchmark (Synthetic Self-Test)
 echo ""
-echo "[Step 10/10] Verifying Spike #1 24MP capture pipeline quality & latency..."
+echo "[Step 10/10] Verifying Spike #1 24MP capture pipeline quality & latency (SYNTHETIC_SELF_TEST)..."
 python3 "${REPO_ROOT}/scripts/evaluate-capture-quality.py" --self-test
-echo "✓ Spike #1 capture quality SLA verified."
+echo "✓ Spike #1 capture quality simulated SLA baseline verified (SYNTHETIC_SELF_TEST)."
 
 # Optional: cargo-deny if installed
 if command -v cargo-deny >/dev/null 2>&1; then

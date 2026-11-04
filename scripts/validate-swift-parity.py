@@ -101,28 +101,78 @@ def main() -> int:
             return 1
         print(f"  ✓ Found PerceptionKit source: {fp.name}")
 
-    # 5b. Verify PerceptionModels.swift <-> compose-core JSON schema parity
-    print("--- [validate-swift-parity] Verifying PerceptionModels.swift <-> compose-core Schema Parity ---")
+    # 5b. Verify PerceptionModels.swift <-> compose-core JSON schema parity (field-level)
+    print("--- [validate-swift-parity] Verifying PerceptionModels.swift <-> compose-core Field-Level Schema Parity (TASK-02) ---")
     models_text = (perception_src / "Pipeline" / "PerceptionModels.swift").read_text(encoding="utf-8")
-    required_schema_tokens = [
-        "public var id: UInt32",
-        "public var bounds: NormalizedBox",
-        "public var joint_type: JointType",
-        "public var point: NormalizedPoint",
-        "public var mask_summary: MaskSummary?",
-        "public var head_cols: [Float]",
-        "public var torso_cols: [Float]",
-        "public var leg_cols: [Float]",
-        "public var angular_speed: Float",
-        "public var is_flatish: Bool",
-        "case Neck",
-        "case Root"
+    rust_model_dir = repo_root / "core" / "compose-core" / "src" / "model"
+
+    # 1. JointType: Check all 19 canonical joint variants in both Rust and Swift
+    canonical_joints = [
+        "Nose", "Neck", "LeftEye", "RightEye", "LeftEar", "RightEar",
+        "LeftShoulder", "RightShoulder", "LeftElbow", "RightElbow",
+        "LeftWrist", "RightWrist", "Root", "LeftHip", "RightHip",
+        "LeftKnee", "RightKnee", "LeftAnkle", "RightAnkle"
     ]
-    for token in required_schema_tokens:
-        if token not in models_text:
-            print(f"[FAIL] PerceptionModels.swift missing compose-core schema token: {token}", file=sys.stderr)
+    rust_joint_text = (rust_model_dir / "joint.rs").read_text(encoding="utf-8")
+    for joint in canonical_joints:
+        if f"case {joint}" not in models_text:
+            print(f"[FAIL] Swift JointType missing case: {joint}", file=sys.stderr)
             return 1
-    print("  ✓ PerceptionModels.swift matches compose-core Frame/Subject/Joint/MaskSummary/Posture schema 100%.")
+        if joint not in rust_joint_text:
+            print(f"[FAIL] Rust JointType missing variant: {joint}", file=sys.stderr)
+            return 1
+    print(f"  ✓ JointType: all {len(canonical_joints)} joint variants match across Rust and Swift.")
+
+    # 2. Field-level structure check for core perceptual and geometric models
+    struct_field_contracts = {
+        "NormalizedPoint": ["x: Float", "y: Float"],
+        "NormalizedBox": ["x: Float", "y: Float", "width: Float", "height: Float"],
+        "Joint": ["joint_type: JointType", "point: NormalizedPoint", "confidence: Float"],
+        "MaskSummary": [
+            "top_y: Float", "bottom_y: Float", "head_cols: [Float]",
+            "torso_cols: [Float]", "leg_cols: [Float]",
+            "touches_top: Bool", "touches_bottom: Bool",
+            "touches_left: Bool", "touches_right: Bool"
+        ],
+        "Subject": [
+            "id: UInt32", "bounds: NormalizedBox", "joints: [String: Joint]",
+            "facing: String", "shot_type: String", "confidence: Float",
+            "is_group: Bool", "mask_summary: MaskSummary?"
+        ],
+        "Posture": [
+            "roll_deg: Float", "pitch_deg: Float", "elevation_deg: Float",
+            "angular_speed: Float", "is_flatish: Bool"
+        ],
+        "CameraIntrinsics": ["focal_length_mm: Float", "hfov_deg: Float"],
+        "ExposureSummary": ["iso: Float", "shutter_speed_sec: Float", "ev: Float"],
+        "PerceptionFrame": [
+            "t: Double", "subjects: [Subject]", "primary_subject_index: Int?",
+            "posture: Posture", "camera: CameraIntrinsics", "exposure: ExposureSummary"
+        ]
+    }
+
+    for struct_name, fields in struct_field_contracts.items():
+        if f"struct {struct_name}" not in models_text:
+            print(f"[FAIL] PerceptionModels.swift missing struct {struct_name}", file=sys.stderr)
+            return 1
+        for field in fields:
+            expected_decl = f"public var {field}"
+            if expected_decl not in models_text:
+                print(f"[FAIL] {struct_name} missing expected field declaration: '{expected_decl}'", file=sys.stderr)
+                return 1
+        print(f"  ✓ {struct_name}: {len(fields)} fields verified for Swift <-> Rust contract parity.")
+
+    # 3. Check Facing and ShotType parity
+    rust_subject_text = (rust_model_dir / "subject.rs").read_text(encoding="utf-8")
+    for facing in ["Frontal", "ThreeQuarterLeft", "ThreeQuarterRight", "ProfileLeft", "ProfileRight", "Back"]:
+        if facing not in rust_subject_text:
+            print(f"[FAIL] Rust Facing enum missing variant: {facing}", file=sys.stderr)
+            return 1
+    for shot in ["CloseUp", "HalfBody", "FullBody", "Environmental", "Unknown"]:
+        if shot not in rust_subject_text:
+            print(f"[FAIL] Rust ShotType enum missing variant: {shot}", file=sys.stderr)
+            return 1
+    print("  ✓ Facing and ShotType photographic classifications verified.")
 
     perception_test_file = perception_kit_dir / "Tests" / "PerceptionKitTests" / "PerceptionKitTests.swift"
     if not perception_test_file.is_file():
@@ -153,12 +203,16 @@ def main() -> int:
         return 1
     print("  ✓ Found SyncKit test suite: SyncKitTests.swift")
 
-    # 8. Check Golden Vectors integrity against Swift definitions
-    print("--- [validate-swift-parity] Checking Golden Vector Coverage ---")
+    # 8. Check Golden Vectors integrity against Swift definitions (TASK-02)
+    print("--- [validate-swift-parity] Checking Golden Vector Coverage & Schema Parity (TASK-02) ---")
+    EXPECTED_GOLDEN_VECTORS = 20
     golden_files = list(fixtures_dir.glob("*.json"))
     golden_vectors = [f for f in golden_files if f.name != "schema.json"]
-    if len(golden_vectors) < 10:
-        print(f"[FAIL] Expected at least 10 golden vector JSONs, found {len(golden_vectors)}", file=sys.stderr)
+    if len(golden_vectors) != EXPECTED_GOLDEN_VECTORS:
+        print(
+            f"[FAIL] Expected exactly {EXPECTED_GOLDEN_VECTORS} golden vector JSONs, found {len(golden_vectors)}",
+            file=sys.stderr,
+        )
         return 1
 
     valid_severities = {"Good", "Minor", "Major", "Critical"}
@@ -166,15 +220,37 @@ def main() -> int:
         with open(gv, "r", encoding="utf-8") as f:
             data = json.load(f)
         vid = data.get("id")
+        desc = data.get("description")
+        inp = data.get("input", {})
+        frame = inp.get("frame", {})
         findings = data.get("expected_findings", [])
+
+        if not vid or not isinstance(vid, str):
+            print(f"[FAIL] Golden vector {gv.name} missing valid 'id'", file=sys.stderr)
+            return 1
+        if not desc or not isinstance(desc, str):
+            print(f"[FAIL] Golden vector {gv.name} missing valid 'description'", file=sys.stderr)
+            return 1
+        if "t" not in frame or "posture" not in frame:
+            print(f"[FAIL] Golden vector {gv.name} missing required input.frame schema fields", file=sys.stderr)
+            return 1
+
         for item in findings:
+            fid = item.get("id")
             sev = item.get("severity")
+            hint = item.get("hint_key")
+            if not fid or not isinstance(fid, str):
+                print(f"[FAIL] Golden vector {vid} has finding without id: {item}", file=sys.stderr)
+                return 1
             if sev not in valid_severities:
                 print(f"[FAIL] Golden vector {vid} has invalid severity: {sev}", file=sys.stderr)
                 return 1
+            if not hint or not isinstance(hint, str):
+                print(f"[FAIL] Golden vector {vid} has finding without hint_key: {item}", file=sys.stderr)
+                return 1
         print(f"  ✓ {gv.name:<32} [id: {vid}, findings: {len(findings)}]")
 
-    print(f"--- [validate-swift-parity] All {len(golden_vectors)} golden vectors validated with Swift parity. ---")
+    print(f"--- [validate-swift-parity] All {len(golden_vectors)} golden vectors validated with exact Swift schema parity. ---")
 
     # 9. TASK-01 hard gate: ComposeKit must really link compose-ffi and must never silently mock
     print("--- [validate-swift-parity] Checking ComposeKit FFI Wiring (TASK-01) ---")
