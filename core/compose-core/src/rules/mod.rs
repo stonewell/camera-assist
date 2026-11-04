@@ -1,5 +1,8 @@
 pub mod crop;
+pub mod distance;
+pub mod lighting;
 pub mod multi_subject;
+pub mod optics;
 pub mod placement;
 pub mod posture;
 
@@ -9,7 +12,10 @@ use crate::model::{Finding, Frame, LightContext};
 use std::collections::HashSet;
 
 pub use crop::{FeetFloatingRule, HeadCropRule, JointCropRule};
+pub use distance::{estimate_distance_m, DistortionRule, UltraWideEdgeRule};
+pub use lighting::{BacklitRule, FlatFrontRule, HarshTopRule, SideHarshRule};
 pub use multi_subject::{MultiSubjectBalanceRule, MultiSubjectOcclusionRule};
+pub use optics::{is_low_light, usable_light, LowLightRule};
 pub use placement::{EdgeCrowdRule, HeadroomRule, LeadRoomRule, PlacementRule, ScaleRule};
 pub use posture::{PitchRule, TiltRule};
 
@@ -56,21 +62,28 @@ impl RulesEngine {
     }
 
     fn register_default_rules(&mut self) {
-        // High priority: Critical & Major errors (crops, tilts, feet, occlusion)
+        // High priority: Critical & Major errors (crops, tilts, feet, occlusion, low-light, distortion)
         self.rules.push(Box::new(HeadCropRule));
         self.rules.push(Box::new(TiltRule));
         self.rules.push(Box::new(PitchRule));
         self.rules.push(Box::new(JointCropRule));
         self.rules.push(Box::new(FeetFloatingRule));
         self.rules.push(Box::new(MultiSubjectOcclusionRule));
+        self.rules.push(Box::new(LowLightRule));
+        self.rules.push(Box::new(DistortionRule));
+        self.rules.push(Box::new(BacklitRule));
 
-        // Framing, Placement, Scale & Edge margins
+        // Framing, Placement, Scale, Edge margins & Lighting suggestions
         self.rules.push(Box::new(PlacementRule));
         self.rules.push(Box::new(HeadroomRule));
         self.rules.push(Box::new(LeadRoomRule));
         self.rules.push(Box::new(ScaleRule));
         self.rules.push(Box::new(EdgeCrowdRule));
         self.rules.push(Box::new(MultiSubjectBalanceRule));
+        self.rules.push(Box::new(HarshTopRule));
+        self.rules.push(Box::new(FlatFrontRule));
+        self.rules.push(Box::new(SideHarshRule));
+        self.rules.push(Box::new(UltraWideEdgeRule));
     }
 
     pub fn add_rule<R: Rule + 'static>(&mut self, rule: R) {

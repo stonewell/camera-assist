@@ -95,12 +95,46 @@ impl HintArbiter {
         }
     }
 
+    /// Resolves the entered delay override for a rule ID.
+    /// Checks for an exact match first, then falls back to the longest `<prefix>.*` glob match.
+    pub fn enter_delay_override_for(&self, id: &str) -> Option<f64> {
+        // 1. Exact match
+        if let Some(&delay) = self.config.enter_delay_override.get(id) {
+            return Some(delay);
+        }
+
+        // 2. Longest "<prefix>.*" glob match
+        let mut best_match: Option<(&str, f64)> = None;
+        for (pattern, &delay) in &self.config.enter_delay_override {
+            if let Some(prefix) = pattern.strip_suffix(".*") {
+                let matches = if prefix.is_empty() {
+                    true
+                } else if let Some(rest) = id.strip_prefix(prefix) {
+                    rest.starts_with('.')
+                } else {
+                    false
+                };
+
+                if matches {
+                    match best_match {
+                        Some((best_pat, _)) if pattern.len() <= best_pat.len() => {}
+                        _ => best_match = Some((pattern.as_str(), delay)),
+                    }
+                }
+            }
+        }
+
+        best_match.map(|(_, delay)| delay)
+    }
+
     fn effective_enter_delay(&self, finding: &Finding) -> f64 {
-        let base = match finding.severity {
-            Severity::Critical => self.config.enter_delay.critical,
-            Severity::Major => self.config.enter_delay.major,
-            Severity::Minor | Severity::Good => self.config.enter_delay.minor,
-        };
+        let base = self
+            .enter_delay_override_for(&finding.id)
+            .unwrap_or(match finding.severity {
+                Severity::Critical => self.config.enter_delay.critical,
+                Severity::Major => self.config.enter_delay.major,
+                Severity::Minor | Severity::Good => self.config.enter_delay.minor,
+            });
         if self.focus_rule.as_deref() == Some(finding.id.as_str()) {
             base * 0.5
         } else {
@@ -330,6 +364,61 @@ mod tests {
         assert_eq!(
             arbiter.update(1.0, vec![f], true, 1.5),
             ArbiterOutput::Silent
+        );
+    }
+
+    #[test]
+    fn test_arbiter_enter_delay_override() {
+        let mut arbiter = HintArbiter::default();
+
+        // 1. Light rules match "light.*" glob -> 1.0s
+        let f_backlit = sample_finding("light.backlit", Severity::Major);
+        assert_eq!(arbiter.enter_delay_override_for("light.backlit"), Some(1.0));
+        assert_eq!(arbiter.effective_enter_delay(&f_backlit), 1.0);
+
+        let f_low_light = sample_finding("light.low_light", Severity::Critical);
+        assert_eq!(
+            arbiter.enter_delay_override_for("light.low_light"),
+            Some(1.0)
+        );
+        assert_eq!(arbiter.effective_enter_delay(&f_low_light), 1.0);
+
+        // 2. Exact match beats glob
+        arbiter
+            .config
+            .enter_delay_override
+            .insert("light.backlit".to_string(), 0.3);
+        assert_eq!(arbiter.enter_delay_override_for("light.backlit"), Some(0.3));
+        assert_eq!(arbiter.effective_enter_delay(&f_backlit), 0.3);
+
+        // 3. Focus rule halves override
+        arbiter.set_focus_rule(Some("light.backlit".to_string()));
+        assert_eq!(arbiter.effective_enter_delay(&f_backlit), 0.15);
+
+        // 4. Non-light rule IDs unaffected by "light.*"
+        arbiter.set_focus_rule(None);
+        let f_head = sample_finding("crop.head", Severity::Critical);
+        assert_eq!(arbiter.enter_delay_override_for("crop.head"), None);
+        assert_eq!(
+            arbiter.effective_enter_delay(&f_head),
+            arbiter.config.enter_delay.critical // 0.25
+        );
+
+        let f_tilt = sample_finding("tilt.level", Severity::Major);
+        assert_eq!(arbiter.enter_delay_override_for("tilt.level"), None);
+        assert_eq!(
+            arbiter.effective_enter_delay(&f_tilt),
+            arbiter.config.enter_delay.major // 0.40
+        );
+
+        let f_headroom = sample_finding("headroom.insufficient", Severity::Minor);
+        assert_eq!(
+            arbiter.enter_delay_override_for("headroom.insufficient"),
+            None
+        );
+        assert_eq!(
+            arbiter.effective_enter_delay(&f_headroom),
+            arbiter.config.enter_delay.minor // 0.70
         );
     }
 }

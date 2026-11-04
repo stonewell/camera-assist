@@ -244,6 +244,133 @@ impl Default for ShotTypeThresholds {
     }
 }
 
+/// Light EV category thresholds.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LightEvThresholds {
+    pub low_light: f32,
+    pub indoor_max: f32,
+    pub shade_max: f32,
+    pub direct_min: f32,
+}
+
+impl Default for LightEvThresholds {
+    fn default() -> Self {
+        Self {
+            low_light: 7.0,
+            indoor_max: 10.0,
+            shade_max: 12.5,
+            direct_min: 13.5,
+        }
+    }
+}
+
+/// Lighting orbit guidance target angles.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrbitTargetThresholds {
+    pub to_backlit: f32,
+    pub to_side: f32,
+}
+
+impl Default for OrbitTargetThresholds {
+    fn default() -> Self {
+        Self {
+            to_backlit: 20.0,
+            to_side: 70.0,
+        }
+    }
+}
+
+/// Comprehensive ambient and direction lighting thresholds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LightThresholds {
+    #[serde(default)]
+    pub ev: LightEvThresholds,
+    pub backlit_face_ratio: f32,
+    pub overcast_cloud_cover: f32,
+    pub top_light_elevation: f32,
+    pub side_harsh_elevation: f32,
+    pub sun_in_frame_max_elevation: f32,
+    pub golden_hour: (f32, f32),
+    pub blue_hour: (f32, f32),
+    #[serde(default)]
+    pub orbit_target: OrbitTargetThresholds,
+    pub golden_hour_soon_minutes: u32,
+    #[serde(default = "default_light_min_confidence")]
+    pub min_confidence: f32,
+}
+
+fn default_light_min_confidence() -> f32 {
+    0.5
+}
+
+impl Default for LightThresholds {
+    fn default() -> Self {
+        Self {
+            ev: LightEvThresholds::default(),
+            backlit_face_ratio: 0.45,
+            overcast_cloud_cover: 0.8,
+            top_light_elevation: 55.0,
+            side_harsh_elevation: 20.0,
+            sun_in_frame_max_elevation: 30.0,
+            golden_hour: (-4.0, 6.0),
+            blue_hour: (-6.0, -4.0),
+            orbit_target: OrbitTargetThresholds::default(),
+            golden_hour_soon_minutes: 45,
+            min_confidence: 0.5,
+        }
+    }
+}
+
+/// Optical distortion distance thresholds.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DistortionThresholds {
+    pub close_up_max_m: f32,
+    pub half_body_max_m: f32,
+    pub wide_max_zoom: f32,
+}
+
+impl Default for DistortionThresholds {
+    fn default() -> Self {
+        Self {
+            close_up_max_m: 1.0,
+            half_body_max_m: 1.5,
+            wide_max_zoom: 1.2,
+        }
+    }
+}
+
+/// Distance estimation and optical field-of-view thresholds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DistanceThresholds {
+    #[serde(default)]
+    pub distortion: DistortionThresholds,
+    pub ultra_wide_edge: f32,
+    pub fill_max_m: f32,
+    pub step_length_m: f32,
+    pub default_height_m: f32,
+    pub ipd_m: f32,
+    pub min_confidence: f32,
+}
+
+impl Default for DistanceThresholds {
+    fn default() -> Self {
+        Self {
+            distortion: DistortionThresholds::default(),
+            ultra_wide_edge: 0.2,
+            fill_max_m: 3.0,
+            step_length_m: 0.7,
+            default_height_m: 1.65,
+            ipd_m: 0.063,
+            min_confidence: 0.6,
+        }
+    }
+}
+
 /// Arbiter enter delay per severity level.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -269,6 +396,8 @@ impl Default for ArbiterEnterDelay {
 pub struct ArbiterThresholds {
     #[serde(default)]
     pub enter_delay: ArbiterEnterDelay,
+    #[serde(default = "default_enter_delay_override")]
+    pub enter_delay_override: std::collections::HashMap<String, f64>,
     #[serde(default = "default_exit_hold")]
     pub exit_hold: f64,
     #[serde(default = "default_min_show")]
@@ -281,6 +410,12 @@ pub struct ArbiterThresholds {
     pub motion_mute: f32,
     #[serde(default = "default_good_hold")]
     pub good_hold: f64,
+}
+
+fn default_enter_delay_override() -> std::collections::HashMap<String, f64> {
+    let mut map = std::collections::HashMap::new();
+    map.insert("light.*".to_string(), 1.0);
+    map
 }
 
 fn default_exit_hold() -> f64 {
@@ -306,6 +441,7 @@ impl Default for ArbiterThresholds {
     fn default() -> Self {
         Self {
             enter_delay: ArbiterEnterDelay::default(),
+            enter_delay_override: default_enter_delay_override(),
             exit_hold: 0.3,
             min_show: 1.2,
             ignore_after: 5.0,
@@ -373,7 +509,30 @@ pub struct ThresholdConfig {
     #[serde(default)]
     pub arbiter: ArbiterThresholds,
     #[serde(default)]
+    pub light: LightThresholds,
+    #[serde(default)]
+    pub distance: DistanceThresholds,
+    #[serde(default = "default_backend_overrides")]
     pub backend_overrides: std::collections::HashMap<String, BackendOverridePatch>,
+}
+
+fn default_backend_overrides() -> std::collections::HashMap<String, BackendOverridePatch> {
+    let mut map = std::collections::HashMap::new();
+    map.insert("vision".to_string(), BackendOverridePatch::default());
+    map.insert(
+        "onnx".to_string(),
+        BackendOverridePatch {
+            limb_cut: Some(LimbCutOverride {
+                min_wrist_conf: Some(0.4),
+                joint_zone: None,
+            }),
+            head: Some(HeadOverride {
+                nose_neck_factor: Some(1.0),
+                mask_top_eps: None,
+            }),
+        },
+    );
+    map
 }
 
 fn default_version() -> u32 {
@@ -416,7 +575,9 @@ impl Default for ThresholdConfig {
             multi_subject: MultiSubjectThresholds::default(),
             shot_type: ShotTypeThresholds::default(),
             arbiter: ArbiterThresholds::default(),
-            backend_overrides: std::collections::HashMap::new(),
+            light: LightThresholds::default(),
+            distance: DistanceThresholds::default(),
+            backend_overrides: default_backend_overrides(),
         }
     }
 }

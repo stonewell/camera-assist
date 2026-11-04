@@ -1,0 +1,53 @@
+{
+  "id": "020_ultra_wide_edge",
+  "description": "Subject near frame edge on 13mm ultra-wide lens causing edge stretch distortion",
+  "input": {
+    "frame": {
+      "t": 1.0,
+      "subjects": [
+        {
+          "id": 1,
+          "bounds": { "x": 0.02, "y": 0.2, "width": 0.2, "height": 0.6 },
+          "joints": {},
+          "facing": "Frontal",
+          "shot_type": "Unknown",
+          "confidence": 0.98,
+          "mask_summary": {
+            "top_y": 0.2,
+            "bottom_y": 0.8,
+            "head_cols": [0.04, 0.16],
+            "torso_cols": [0.035, 0.18],
+            "leg_cols": [0.04, 0.16],
+            "touches_top": false,
+            "touches_bottom": false,
+            "touches_left": false,
+            "touches_right": false
+          }
+        }
+      ],
+      "primary_subject_index": 0,
+      "posture": {
+        "roll_deg": 0.0,
+        "pitch_deg": 0.0,
+        "elevation_deg": 0.0
+      },
+      "camera": {
+        "focal_length_mm": 13.0,
+        "hfov_deg": 108.0
+      },
+      "exposure": {
+        "iso": 100.0,
+        "shutter_speed_sec": 0.002,
+        "ev": 12.0
+      }
+    },
+    "light": null
+  },
+  "expected_findings": [
+    {
+      "id": "distance.ultra_wide_edge",
+      "severity": "Minor",
+      "hint_key": "switch_zoom_1x"
+    }
+  ]
+}

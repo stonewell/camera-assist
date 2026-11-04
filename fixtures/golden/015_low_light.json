@@ -1,0 +1,41 @@
+{
+  "id": "015_low_light",
+  "description": "Ambient light EV is 5.0 below low light threshold without subjects",
+  "input": {
+    "frame": {
+      "t": 1.0,
+      "subjects": [],
+      "primary_subject_index": null,
+      "posture": {
+        "roll_deg": 0.0,
+        "pitch_deg": 0.0,
+        "elevation_deg": 0.0
+      },
+      "camera": {
+        "focal_length_mm": 24.0,
+        "hfov_deg": 73.7
+      },
+      "exposure": {
+        "iso": 800.0,
+        "shutter_speed_sec": 0.033,
+        "ev": 5.0
+      }
+    },
+    "light": {
+      "direction": "Unknown",
+      "quality": "LowLight",
+      "sun_azimuth_deg": null,
+      "sun_elevation_deg": null,
+      "face_to_bg_ratio": null,
+      "ev": 5.0,
+      "confidence": 0.95
+    }
+  },
+  "expected_findings": [
+    {
+      "id": "light.low_light",
+      "severity": "Critical",
+      "hint_key": "use_night_mode"
+    }
+  ]
+}

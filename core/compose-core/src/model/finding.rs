@@ -31,6 +31,9 @@ pub enum Action {
     SwitchZoom { factor: f32 },
     EnableFill,
     CleanLens,
+    MoveToShade,
+    TurnSubject { deg: f32 },
+    UseNightMode,
     Good,
 }
 

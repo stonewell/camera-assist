@@ -21,7 +21,8 @@
     "goldenHour": [-4.0, 6.0],
     "blueHour": [-6.0, -4.0],
     "orbitTarget": { "toBacklit": 20.0, "toSide": 70.0 },
-    "goldenHourSoonMinutes": 45
+    "goldenHourSoonMinutes": 45,
+    "minConfidence": 0.5
   },
   "distance": {
     "distortion": { "closeUpMaxM": 1.0, "halfBodyMaxM": 1.5, "wideMaxZoom": 1.2 },

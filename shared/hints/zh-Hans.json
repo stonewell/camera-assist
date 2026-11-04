@@ -61,10 +61,40 @@
       "secondary": "离太近脸部会有透视畸变",
       "spoken": "切二倍后退"
     },
+    "switch_zoom_step_back": {
+      "primary": "切到 2×，后退几步",
+      "secondary": "离太近脸部会有透视畸变",
+      "spoken": "切二倍后退"
+    },
+    "switch_zoom_1x": {
+      "primary": "切到 1× 拍摄",
+      "secondary": "超广角边缘人物易拉伸形变",
+      "spoken": "切到一倍"
+    },
     "enable_fill": {
       "primary": "点这里补光",
       "secondary": "逆光人物脸部偏暗",
       "spoken": "开启补光"
+    },
+    "move_to_shade": {
+      "primary": "移到阴凉处拍摄",
+      "secondary": "顶光过强产生面部阴影",
+      "spoken": "移到阴凉处"
+    },
+    "turn_subject_side": {
+      "primary": "人物侧身一点",
+      "secondary": "顺光直射五官缺乏立体感",
+      "spoken": "侧身一点"
+    },
+    "turn_face_to_light": {
+      "primary": "脸转向光线方向",
+      "secondary": "侧光过强产生阴阳脸",
+      "spoken": "脸转向光"
+    },
+    "use_night_mode": {
+      "primary": "开启夜景模式或移至光亮处",
+      "secondary": "环境光线过暗",
+      "spoken": "开启夜景"
     },
     "clean_lens": {
       "primary": "请擦拭相机镜头",

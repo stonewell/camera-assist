@@ -30,6 +30,31 @@ fn test_threshold_config_deserialization() {
     assert_eq!(config.head.mask_top_eps, 0.005);
     assert_eq!(config.placement.center_tol, 0.05);
     assert_eq!(config.headroom.close_up, (0.02, 0.12));
+    assert_eq!(config.light.ev.low_light, 7.0);
+    assert_eq!(config.light.min_confidence, 0.5);
+    assert_eq!(config.distance.distortion.close_up_max_m, 1.0);
+    assert_eq!(config.distance.ultra_wide_edge, 0.2);
+    assert_eq!(
+        config.arbiter.enter_delay_override.get("light.*"),
+        Some(&1.0)
+    );
+}
+
+#[test]
+fn test_threshold_config_matches_defaults() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let config_path = manifest_dir
+        .parent()
+        .expect("parent of compose-core")
+        .parent()
+        .expect("repo root")
+        .join("shared")
+        .join("config")
+        .join("Thresholds.json");
+
+    let content = fs::read_to_string(&config_path).expect("read Thresholds.json");
+    let config = ThresholdConfig::from_json_str(&content).expect("parse ThresholdConfig");
+    assert_eq!(config, ThresholdConfig::default());
 }
 
 #[test]

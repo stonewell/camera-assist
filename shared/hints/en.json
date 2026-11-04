@@ -61,10 +61,40 @@
       "secondary": "Avoid wide-angle facial distortion",
       "spoken": "Switch to 2x"
     },
+    "switch_zoom_step_back": {
+      "primary": "Switch to 2x, step back",
+      "secondary": "Avoid wide-angle facial distortion",
+      "spoken": "Switch to 2x"
+    },
+    "switch_zoom_1x": {
+      "primary": "Switch to 1x",
+      "secondary": "Subject near edge of ultra-wide lens causes distortion",
+      "spoken": "Switch to 1x"
+    },
     "enable_fill": {
       "primary": "Tap to fill light",
       "secondary": "Subject face is backlit and dark",
       "spoken": "Enable fill light"
+    },
+    "move_to_shade": {
+      "primary": "Move subject into shade",
+      "secondary": "Harsh overhead light creates dark shadows",
+      "spoken": "Move into shade"
+    },
+    "turn_subject_side": {
+      "primary": "Turn subject slightly to the side",
+      "secondary": "Direct frontal light creates flat features",
+      "spoken": "Turn slightly"
+    },
+    "turn_face_to_light": {
+      "primary": "Turn face toward the light",
+      "secondary": "Harsh side light creates uneven shadows",
+      "spoken": "Face the light"
+    },
+    "use_night_mode": {
+      "primary": "Use Night Mode or find brighter light",
+      "secondary": "Ambient light is too dim",
+      "spoken": "Use Night Mode"
     },
     "clean_lens": {
       "primary": "Clean your camera lens",
