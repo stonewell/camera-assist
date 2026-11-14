@@ -33,7 +33,8 @@ let package = Package(
                 "CameraApp.swift",
                 "CameraFeature/CameraCoordinator.swift",
                 "CameraFeature/CameraPreviewView.swift",
-                "CameraFeature/PerceptionDebugHUD.swift"
+                "CameraFeature/PerceptionDebugHUD.swift",
+                "CameraFeature/UserGuidanceHUD.swift"
             ]
         ),
     ]

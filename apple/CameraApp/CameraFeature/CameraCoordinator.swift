@@ -91,18 +91,30 @@ public final class CameraCoordinator: ObservableObject {
 
     public let engineLatencySLACeilingMs: Double = 1.0
 
+    public let hintResolver: HintCatalogResolver = .shared
+    public let hapticEngine: GuidanceHapticEngine = GuidanceHapticEngine()
+
     @Published public var telemetry: DebugTelemetry = DebugTelemetry()
     @Published public var renderJoints: [String: RenderJoint] = [:]
     @Published public var primaryBoundingBox: CGRect? = nil
     @Published public var activeFinding: String? = nil
     @Published public var activeHintBannerText: String = "构图不错，可以拍"
     @Published public var isGoodToShoot: Bool = true
+    @Published public var isFlatish: Bool = false
     @Published public var currentZoomPreset: CameraZoomPreset = .wide
     @Published public var isDebugHUDVisible: Bool = true
     @Published public var isCapturing: Bool = false
     @Published public var lastCapturedPhoto: PhotoCaptureResult? = nil
     @Published public var engineLatencyMs: Double = 0.0
     @Published public var isSessionRunning: Bool = false
+
+    @Published public var latestComposeOutput: ComposeOutput = ComposeOutput(isGoodToShoot: true)
+    @Published public var activeHint: ComposeHint = ComposeHint(primary: "构图不错，可以拍", secondary: "", spoken: "好，拍吧")
+    @Published public var isUserGuidanceEnabled: Bool = true
+    @Published public var hintLocale: String = "zh-Hans"
+
+    private var isProcessingFrame: Bool = false
+    private var latestProcessedTimestamp: Double = -.infinity
 
     public init(
         sessionManager: CaptureSessionManager = CaptureSessionManager(),
@@ -155,7 +167,9 @@ public final class CameraCoordinator: ObservableObject {
     private func setupFramePipeline() {
         sessionManager.setFrameHandler { [weak self] frame in
             Task { @MainActor [weak self] in
-                await self?.processIncomingSample(frame)
+                guard let self = self else { return }
+                guard !self.isProcessingFrame else { return }
+                await self.processIncomingSample(frame)
             }
         }
     }
@@ -187,6 +201,19 @@ public final class CameraCoordinator: ObservableObject {
             try await sessionManager.switchLens(to: preset.lensType)
         } catch {
             // Handle lens switch error
+        }
+    }
+
+    /// Maps recommended continuous/discrete zoom factor to nearest discrete CameraZoomPreset.
+    public func applyRecommendedZoom(factor: Float) async {
+        if factor <= 0.7 {
+            await selectZoomPreset(.ultraWide)
+        } else if factor <= 1.4 {
+            await selectZoomPreset(.wide)
+        } else if factor <= 2.4 {
+            await selectZoomPreset(.tele2x)
+        } else {
+            await selectZoomPreset(.tele3x)
         }
     }
 
@@ -234,6 +261,12 @@ public final class CameraCoordinator: ObservableObject {
 
     /// Processes a single incoming video sample frame through Vision perception and LiveComposer rules.
     public func processIncomingSample(_ frame: VideoSampleFrame) async {
+        guard !isProcessingFrame else { return }
+        guard frame.presentationTimestamp >= latestProcessedTimestamp else { return }
+        isProcessingFrame = true
+        latestProcessedTimestamp = frame.presentationTimestamp
+        defer { isProcessingFrame = false }
+
         let intrinsics = CameraIntrinsics.from(
             focalLengthMm: frame.focalLengthMm ?? currentZoomPreset.defaultIntrinsics.focal_length_mm,
             hfovDeg: frame.hfovDeg ?? (frame.intrinsicMatrix == nil ? currentZoomPreset.defaultIntrinsics.hfov_deg : nil),
@@ -297,7 +330,7 @@ public final class CameraCoordinator: ObservableObject {
         var output: ComposeOutput? = nil
         var evalLatency: Double = 0.0
 
-        if let comp = self.composer, !comp.isMockMode {
+        if let comp = self.composer, await !comp.isMockMode {
             let start = CFAbsoluteTimeGetCurrent()
             do {
                 output = try await comp.evaluate(
@@ -332,15 +365,31 @@ public final class CameraCoordinator: ObservableObject {
 
         self.engineLatencyMs = evalLatency
         self.isGoodToShoot = resolvedOutput.isGoodToShoot
+        self.isFlatish = bundle.frame.posture.is_flatish
         self.activeFinding = resolvedOutput.activeFindingId
+        self.latestComposeOutput = resolvedOutput
 
-        if let hintText = resolvedOutput.hintText, !hintText.isEmpty {
-            self.activeHintBannerText = hintText
+        let resolvedHint = hintResolver.resolve(
+            hintKey: resolvedOutput.hintKey,
+            locale: hintLocale,
+            fallbackHint: resolvedOutput.hint
+        )
+        self.activeHint = resolvedHint
+
+        if !resolvedHint.primary.isEmpty {
+            self.activeHintBannerText = resolvedHint.primary
         } else if resolvedOutput.isGoodToShoot {
             self.activeHintBannerText = "构图不错，可以拍"
         } else {
             self.activeHintBannerText = "调整相机角度"
         }
+
+        hapticEngine.evaluateTransition(
+            isGoodToShoot: resolvedOutput.isGoodToShoot,
+            rollDeg: Double(bundle.frame.posture.roll_deg),
+            pitchDeg: Double(bundle.frame.posture.pitch_deg),
+            isFlatish: bundle.frame.posture.is_flatish
+        )
 
         self.telemetry = DebugTelemetry(
             fps: Double(sessionManager.effectiveFrameRate),

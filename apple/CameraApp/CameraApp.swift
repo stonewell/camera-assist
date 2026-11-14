@@ -37,7 +37,23 @@ public struct CameraViewfinderScreen: View {
                 )
                 .ignoresSafeArea()
 
-                // 2. Perception Debug HUD Overlay (Pose skeleton, Horizon level, Bounding box, Telemetry)
+                // 2. Interactive User Guidance HUD (Target lines, horizon indicator, good-to-shoot pulse, active hint pill)
+                UserGuidanceHUD(
+                    isEnabled: $coordinator.isUserGuidanceEnabled,
+                    output: coordinator.latestComposeOutput,
+                    hint: coordinator.activeHint,
+                    rollDeg: coordinator.telemetry.rollDeg,
+                    pitchDeg: coordinator.telemetry.pitchDeg,
+                    boundingBox: coordinator.primaryBoundingBox,
+                    isFlatish: coordinator.isFlatish,
+                    onSelectZoom: { factor in
+                        Task {
+                            await coordinator.applyRecommendedZoom(factor: factor)
+                        }
+                    }
+                )
+
+                // 3. Perception Debug HUD Overlay (Pose skeleton, Horizon level, Bounding box, Telemetry)
                 PerceptionDebugHUD(
                     isVisible: $coordinator.isDebugHUDVisible,
                     telemetry: coordinator.telemetry,
@@ -45,7 +61,7 @@ public struct CameraViewfinderScreen: View {
                     boundingBox: coordinator.primaryBoundingBox
                 )
 
-                // 3. User Viewfinder Controls & Overlays
+                // 4. User Viewfinder Controls & Overlays
                 VStack(spacing: 0) {
                     // Top Navigation Bar
                     topNavigationBar
@@ -85,6 +101,16 @@ public struct CameraViewfinderScreen: View {
                 .foregroundColor(.white)
 
             Spacer()
+
+            // Guidance HUD toggle
+            Button(action: { coordinator.isUserGuidanceEnabled.toggle() }) {
+                Image(systemName: coordinator.isUserGuidanceEnabled ? "sparkles" : "sparkles.rectangle.stack")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(coordinator.isUserGuidanceEnabled ? .yellow : .white.opacity(0.6))
+                    .padding(6)
+                    .background(Color.black.opacity(0.6))
+                    .clipShape(Circle())
+            }
 
             // 24MP computational imaging badge
             HStack(spacing: 4) {

@@ -187,13 +187,14 @@ def main() -> int:
         return 1
     print("  ✓ Found PerceptionKit test suite: PerceptionKitTests.swift")
 
-    # 6. Check CameraApp UI and Coordination Components (TASK-08)
-    print("--- [validate-swift-parity] Checking CameraApp End-to-End Components (TASK-08) ---")
+    # 6. Check CameraApp UI and Coordination Components (TASK-08 / TASK-09)
+    print("--- [validate-swift-parity] Checking CameraApp End-to-End Components (TASK-08 / TASK-09) ---")
     camera_app_files = [
         camera_app_dir / "CameraApp.swift",
         camera_app_dir / "CameraFeature" / "CameraCoordinator.swift",
         camera_app_dir / "CameraFeature" / "CameraPreviewView.swift",
         camera_app_dir / "CameraFeature" / "PerceptionDebugHUD.swift",
+        camera_app_dir / "CameraFeature" / "UserGuidanceHUD.swift",
     ]
     for fp in camera_app_files:
         if not fp.is_file():
@@ -218,7 +219,14 @@ def main() -> int:
         "selectZoomPreset",
         "capturePhoto",
         "FrameEvaluationSnapshot",
-        "CameraZoomPreset"
+        "CameraZoomPreset",
+        "hintResolver",
+        "hapticEngine",
+        "latestComposeOutput",
+        "activeHint",
+        "isUserGuidanceEnabled",
+        "isFlatish",
+        "applyRecommendedZoom"
     ]
     for token in expected_coord_tokens:
         if token not in coordinator_text:
@@ -244,11 +252,43 @@ def main() -> int:
 
     # 6.4 Check CameraApp.swift tokens
     app_text = (camera_app_dir / "CameraApp.swift").read_text(encoding="utf-8")
-    for token in ["CameraCoordinator", "CameraPreviewView", "PerceptionDebugHUD", "struct CameraApp", "CameraViewfinderScreen"]:
+    for token in ["CameraCoordinator", "CameraPreviewView", "PerceptionDebugHUD", "UserGuidanceHUD", "struct CameraApp", "CameraViewfinderScreen"]:
         if token not in app_text:
             print(f"[FAIL] CameraApp.swift missing required token: {token}", file=sys.stderr)
             return 1
-    print("  ✓ CameraApp.swift verified with CameraCoordinator, CameraPreviewView, and PerceptionDebugHUD.")
+    print("  ✓ CameraApp.swift verified with CameraCoordinator, CameraPreviewView, UserGuidanceHUD, and PerceptionDebugHUD.")
+
+    # 6.5 Check UserGuidanceHUD components and hint keys (TASK-09)
+    print("--- [validate-swift-parity] Checking UserGuidanceHUD Components & Catalogs (TASK-09) ---")
+    guidance_text = (camera_app_dir / "CameraFeature" / "UserGuidanceHUD.swift").read_text(encoding="utf-8")
+    expected_guidance_types = [
+        "HintCatalogResolver",
+        "GuidanceHapticEngine",
+        "UIImpactFeedbackGenerator",
+        "HorizonIndicatorView",
+        "HintPillView",
+        "TargetLineOverlay",
+        "GoodToShootOverlay",
+        "UserGuidanceHUD"
+    ]
+    for t in expected_guidance_types:
+        if t not in guidance_text:
+            print(f"[FAIL] UserGuidanceHUD.swift missing required type/token: {t}", file=sys.stderr)
+            return 1
+    print(f"  ✓ UserGuidanceHUD.swift contains all {len(expected_guidance_types)} expected HUD types.")
+
+    all_21_hint_keys = [
+        "rotate_cw", "rotate_ccw", "hold_vertical", "lower_phone", "lower_and_vertical",
+        "step_back", "step_forward", "pan_left", "pan_right", "tilt_down", "tilt_up",
+        "switch_zoom_2x", "switch_zoom_step_back", "switch_zoom_1x", "enable_fill",
+        "move_to_shade", "turn_subject_side", "turn_face_to_light", "use_night_mode",
+        "clean_lens", "good"
+    ]
+    for key in all_21_hint_keys:
+        if f'"{key}"' not in guidance_text:
+            print(f"[FAIL] UserGuidanceHUD.swift missing hint key: {key}", file=sys.stderr)
+            return 1
+    print(f"  ✓ UserGuidanceHUD.swift contains all {len(all_21_hint_keys)} standard hint keys in catalogs.")
 
     # 7. Check ComposeKit & SyncKit Tests
     tests_dir = compose_kit_dir / "Tests" / "ComposeKitTests"
