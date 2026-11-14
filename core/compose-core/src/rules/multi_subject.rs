@@ -22,13 +22,16 @@ impl Rule for MultiSubjectOcclusionRule {
             for j in (i + 1)..subjects.len() {
                 let iou = subjects[i].bounds.iou(&subjects[j].bounds);
                 if iou > max_iou {
-                    return Some(Finding::new(
-                        self.id(),
-                        Severity::Major,
-                        Audience::Photographer,
-                        Action::StepBack { steps: 1 },
-                        "step_back",
-                    ));
+                    return Some(
+                        Finding::new(
+                            self.id(),
+                            Severity::Major,
+                            Audience::Photographer,
+                            Action::StepBack { steps: 1 },
+                            "step_back",
+                        )
+                        .with_metrics(iou, max_iou),
+                    );
                 }
             }
         }
@@ -58,17 +61,20 @@ impl Rule for MultiSubjectBalanceRule {
 
         if (avg_x - 0.5).abs() > tol {
             let is_left = avg_x < 0.5;
-            Some(Finding::new(
-                self.id(),
-                Severity::Minor,
-                Audience::Photographer,
-                if is_left {
-                    Action::PanLeft
-                } else {
-                    Action::PanRight
-                },
-                if is_left { "pan_left" } else { "pan_right" },
-            ))
+            Some(
+                Finding::new(
+                    self.id(),
+                    Severity::Minor,
+                    Audience::Photographer,
+                    if is_left {
+                        Action::PanLeft
+                    } else {
+                        Action::PanRight
+                    },
+                    if is_left { "pan_left" } else { "pan_right" },
+                )
+                .with_metrics(avg_x, 0.5),
+            )
         } else {
             None
         }

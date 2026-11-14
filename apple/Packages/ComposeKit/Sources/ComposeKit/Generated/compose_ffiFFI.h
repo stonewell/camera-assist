@@ -266,9 +266,24 @@ void uniffi_compose_ffi_fn_free_liveengine(void*_Nonnull ptr, RustCallStatus *_N
 void*_Nonnull uniffi_compose_ffi_fn_constructor_liveengine_new(RustBuffer config_json, RustBuffer backend, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_ANALYZE_STILL
+#define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_ANALYZE_STILL
+RustBuffer uniffi_compose_ffi_fn_method_liveengine_analyze_still(void*_Nonnull ptr, RustBuffer frame_json, RustBuffer light_json, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_BACKEND
 #define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_BACKEND
 RustBuffer uniffi_compose_ffi_fn_method_liveengine_backend(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_RELOAD_CONFIG
+#define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_RELOAD_CONFIG
+void uniffi_compose_ffi_fn_method_liveengine_reload_config(void*_Nonnull ptr, RustBuffer config_json, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_RESET
+#define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_RESET
+void uniffi_compose_ffi_fn_method_liveengine_reset(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_FN_METHOD_LIVEENGINE_SET_FOCUS
@@ -566,9 +581,27 @@ void ffi_compose_ffi_rust_future_free_void(uint64_t handle
 void ffi_compose_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_ANALYZE_STILL
+#define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_ANALYZE_STILL
+uint16_t uniffi_compose_ffi_checksum_method_liveengine_analyze_still(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_BACKEND
 #define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_BACKEND
 uint16_t uniffi_compose_ffi_checksum_method_liveengine_backend(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_RELOAD_CONFIG
+#define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_RELOAD_CONFIG
+uint16_t uniffi_compose_ffi_checksum_method_liveengine_reload_config(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_RESET
+#define UNIFFI_FFIDEF_UNIFFI_COMPOSE_FFI_CHECKSUM_METHOD_LIVEENGINE_RESET
+uint16_t uniffi_compose_ffi_checksum_method_liveengine_reset(void
     
 );
 #endif

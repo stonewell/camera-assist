@@ -45,7 +45,7 @@ final class GoldenVectorTests: XCTestCase {
             .filter { $0.pathExtension == "json" && $0.lastPathComponent != "schema.json" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
 
-        XCTAssertEqual(files.count, 13, "Expected 13 golden vectors in \(goldenDir.path)")
+        XCTAssertEqual(files.count, 20, "Expected 20 golden vectors in \(goldenDir.path)")
         XCTAssertFalse(files.isEmpty)
 
         for file in files {
@@ -117,6 +117,33 @@ final class GoldenVectorTests: XCTestCase {
                 }
             }
         }
+    }
+
+    func testAnalyzeStillOnGoldenVector() async throws {
+        let composer = try XCTUnwrap(self.composer)
+        let file = goldenDir.appendingPathComponent("001_level_phone.json")
+        let data = try Data(contentsOf: file)
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let input = try XCTUnwrap(root["input"] as? [String: Any])
+        let frame = try XCTUnwrap(input["frame"] as? [String: Any])
+        let frameJson = try jsonString(from: frame)
+
+        let findings = try await composer.analyzeStill(frameJson: frameJson)
+        XCTAssertEqual(findings.count, 1)
+        let first = findings[0]
+        XCTAssertEqual(first.id, "tilt.level")
+        XCTAssertEqual(first.severity, .major)
+        XCTAssertEqual(first.hintKey, "rotate_ccw")
+        XCTAssertFalse(first.hintText.isEmpty)
+        XCTAssertEqual(first.primaryAction, .rotate(deg: 3.5, clockwise: false))
+    }
+
+    func testLiveComposerReloadConfigAndReset() async throws {
+        let composer = try XCTUnwrap(self.composer)
+        try await composer.reloadConfig(configJson: "{\"version\": 1}")
+        await composer.reset()
+        let backend = await composer.backend()
+        XCTAssertEqual(backend, "vision")
     }
 
     private func jsonString(from object: Any) throws -> String {

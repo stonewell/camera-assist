@@ -19,17 +19,20 @@ impl Rule for PlacementRule {
                 let tol = ctx.config.placement.center_tol; // Centering tolerance
                 if (center_x - 0.5).abs() > tol {
                     let is_left = center_x < 0.5;
-                    Some(Finding::new(
-                        self.id(),
-                        Severity::Minor,
-                        Audience::Photographer,
-                        if is_left {
-                            Action::PanLeft
-                        } else {
-                            Action::PanRight
-                        },
-                        if is_left { "pan_left" } else { "pan_right" },
-                    ))
+                    Some(
+                        Finding::new(
+                            self.id(),
+                            Severity::Minor,
+                            Audience::Photographer,
+                            if is_left {
+                                Action::PanLeft
+                            } else {
+                                Action::PanRight
+                            },
+                            if is_left { "pan_left" } else { "pan_right" },
+                        )
+                        .with_metrics(center_x, 0.5),
+                    )
                 } else {
                     None
                 }
@@ -47,17 +50,25 @@ impl Rule for PlacementRule {
 
                 if min_dist > third_tol {
                     let move_left = center_x < 0.5;
-                    Some(Finding::new(
-                        "placement.thirds",
-                        Severity::Minor,
-                        Audience::Photographer,
-                        if move_left {
-                            Action::PanLeft
-                        } else {
-                            Action::PanRight
-                        },
-                        if move_left { "pan_left" } else { "pan_right" },
-                    ))
+                    let target_third = if dist_to_left_third <= dist_to_right_third {
+                        0.333
+                    } else {
+                        0.667
+                    };
+                    Some(
+                        Finding::new(
+                            "placement.thirds",
+                            Severity::Minor,
+                            Audience::Photographer,
+                            if move_left {
+                                Action::PanLeft
+                            } else {
+                                Action::PanRight
+                            },
+                            if move_left { "pan_left" } else { "pan_right" },
+                        )
+                        .with_metrics(center_x, target_third),
+                    )
                 } else {
                     None
                 }
@@ -93,21 +104,27 @@ impl Rule for HeadroomRule {
         };
 
         if top_y < min_hr {
-            Some(Finding::new(
-                "headroom.insufficient",
-                Severity::Minor,
-                Audience::Photographer,
-                Action::TiltUp,
-                "tilt_up",
-            ))
+            Some(
+                Finding::new(
+                    "headroom.insufficient",
+                    Severity::Minor,
+                    Audience::Photographer,
+                    Action::TiltUp,
+                    "tilt_up",
+                )
+                .with_metrics(top_y, min_hr),
+            )
         } else if top_y > max_hr {
-            Some(Finding::new(
-                "headroom.excessive",
-                Severity::Minor,
-                Audience::Photographer,
-                Action::TiltDown,
-                "tilt_down",
-            ))
+            Some(
+                Finding::new(
+                    "headroom.excessive",
+                    Severity::Minor,
+                    Audience::Photographer,
+                    Action::TiltDown,
+                    "tilt_down",
+                )
+                .with_metrics(top_y, max_hr),
+            )
         } else {
             None
         }

@@ -55,6 +55,14 @@ impl HintArbiter {
         }
     }
 
+    pub fn set_config(&mut self, config: ArbiterThresholds) {
+        self.config = config;
+    }
+
+    pub fn config(&self) -> &ArbiterThresholds {
+        &self.config
+    }
+
     pub fn set_focus_rule(&mut self, rule_id: Option<String>) {
         self.focus_rule = rule_id;
     }

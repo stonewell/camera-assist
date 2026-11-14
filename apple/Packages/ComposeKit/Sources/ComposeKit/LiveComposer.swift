@@ -73,18 +73,40 @@ public actor LiveComposer {
             throw ComposeEngineError.initializationFailed("engine not initialized")
         }
         let ffiOut = try eng.stepJson(frameJson: frameJson, lightJson: lightJson, t: timestamp)
-        return ComposeOutput(
-            activeFindingId: ffiOut.activeFindingId,
-            hintKey: ffiOut.hintKey,
-            isGoodToShoot: ffiOut.isGoodToShoot,
-            rawFindingsCount: Int(ffiOut.rawFindingsCount)
-        )
+        return ComposeOutput(ffi: ffiOut)
+    }
+
+    /// Reconfigures engine and arbiter thresholds dynamically at runtime.
+    public func reloadConfig(configJson: String) throws {
+        guard let eng = self.engine, !self.isMockMode else {
+            throw ComposeEngineError.initializationFailed("engine not initialized")
+        }
+        try eng.reloadConfig(configJson: configJson)
+    }
+
+    /// One-shot composition analysis for still captures, bypassing temporal arbitration.
+    public func analyzeStill(frameJson: String, lightJson: String? = nil) throws -> [ComposeFinding] {
+        guard let eng = self.engine, !self.isMockMode else {
+            throw ComposeEngineError.initializationFailed("engine not initialized")
+        }
+        let findingsFfi = try eng.analyzeStill(frameJson: frameJson, lightJson: lightJson)
+        return findingsFfi.map { ComposeFinding(ffi: $0) }
+    }
+
+    /// Resets arbiter state and temporal history.
+    public func reset() {
+        self.engine?.reset()
     }
 
     /// Set prioritized focus rule.
     public func setFocusRule(id: String?) {
         self.focusRuleId = id
         self.engine?.setFocus(ruleId: id)
+    }
+
+    /// Get current active backend name ("vision" or "onnx").
+    public func backend() -> String {
+        return self.engine?.backend() ?? "unlinked"
     }
 
     /// Get engine version.

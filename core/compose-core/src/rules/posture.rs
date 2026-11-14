@@ -30,16 +30,19 @@ impl Rule for TiltRule {
                 Severity::Major
             };
 
-            Some(Finding::new(
-                self.id(),
-                severity,
-                Audience::Photographer,
-                Action::Rotate {
-                    deg: roll.abs(),
-                    clockwise: !is_cw,
-                },
-                if is_cw { "rotate_ccw" } else { "rotate_cw" },
-            ))
+            Some(
+                Finding::new(
+                    self.id(),
+                    severity,
+                    Audience::Photographer,
+                    Action::Rotate {
+                        deg: roll.abs(),
+                        clockwise: !is_cw,
+                    },
+                    if is_cw { "rotate_ccw" } else { "rotate_cw" },
+                )
+                .with_metrics(roll, 0.0),
+            )
         } else {
             None
         }
@@ -64,13 +67,16 @@ impl Rule for PitchRule {
         };
 
         if pitch.abs() > threshold {
-            Some(Finding::new(
-                self.id(),
-                Severity::Major,
-                Audience::Photographer,
-                Action::HoldVertical,
-                "hold_vertical",
-            ))
+            Some(
+                Finding::new(
+                    self.id(),
+                    Severity::Major,
+                    Audience::Photographer,
+                    Action::HoldVertical,
+                    "hold_vertical",
+                )
+                .with_metrics(pitch, 0.0),
+            )
         } else {
             None
         }

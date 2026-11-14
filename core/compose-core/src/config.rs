@@ -476,6 +476,31 @@ pub struct HeadOverride {
     pub mask_top_eps: Option<f32>,
 }
 
+/// Still capture analysis thresholds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct StillThresholds {
+    pub tilt_min_deg: f32,
+    pub tilt_max_auto_deg: f32,
+    pub keystone_min_converge_deg: f32,
+    pub crop_min_keep_ratio: f32,
+    pub crop_aspects: Vec<String>,
+    pub horizon_min_confidence: f32,
+}
+
+impl Default for StillThresholds {
+    fn default() -> Self {
+        Self {
+            tilt_min_deg: 1.5,
+            tilt_max_auto_deg: 8.0,
+            keystone_min_converge_deg: 3.0,
+            crop_min_keep_ratio: 0.5,
+            crop_aspects: vec!["original".to_string(), "4:3".to_string()],
+            horizon_min_confidence: 0.6,
+        }
+    }
+}
+
 /// Complete typed threshold configuration loaded from shared/config/Thresholds.json.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -512,6 +537,8 @@ pub struct ThresholdConfig {
     pub light: LightThresholds,
     #[serde(default)]
     pub distance: DistanceThresholds,
+    #[serde(default)]
+    pub still: StillThresholds,
     #[serde(default = "default_backend_overrides")]
     pub backend_overrides: std::collections::HashMap<String, BackendOverridePatch>,
 }
@@ -577,6 +604,7 @@ impl Default for ThresholdConfig {
             arbiter: ArbiterThresholds::default(),
             light: LightThresholds::default(),
             distance: DistanceThresholds::default(),
+            still: StillThresholds::default(),
             backend_overrides: default_backend_overrides(),
         }
     }

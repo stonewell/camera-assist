@@ -71,13 +71,16 @@ impl Rule for HeadCropRule {
         };
 
         if triggered {
-            Some(Finding::new(
-                self.id(),
-                Severity::Critical,
-                Audience::Photographer,
-                Action::TiltUp,
-                "tilt_up",
-            ))
+            Some(
+                Finding::new(
+                    self.id(),
+                    Severity::Critical,
+                    Audience::Photographer,
+                    Action::TiltUp,
+                    "tilt_up",
+                )
+                .with_metrics(primary.bounds.min_y(), eps),
+            )
         } else {
             None
         }
@@ -158,13 +161,16 @@ impl Rule for JointCropRule {
 
         for chain in arm_chains {
             if Self::chain_cut(primary, chain, min_prox, min_term, arm_extend) {
-                return Some(Finding::new(
-                    self.id(),
-                    Severity::Major,
-                    Audience::Photographer,
-                    Action::StepBack { steps: 1 },
-                    "step_back",
-                ));
+                return Some(
+                    Finding::new(
+                        self.id(),
+                        Severity::Major,
+                        Audience::Photographer,
+                        Action::StepBack { steps: 1 },
+                        "step_back",
+                    )
+                    .with_metrics(0.0, edge_margin),
+                );
             }
         }
 
@@ -184,13 +190,16 @@ impl Rule for JointCropRule {
             ];
             for chain in leg_chains {
                 if Self::chain_cut(primary, chain, min_prox, min_term, leg_extend) {
-                    return Some(Finding::new(
-                        self.id(),
-                        Severity::Major,
-                        Audience::Photographer,
-                        Action::StepBack { steps: 1 },
-                        "step_back",
-                    ));
+                    return Some(
+                        Finding::new(
+                            self.id(),
+                            Severity::Major,
+                            Audience::Photographer,
+                            Action::StepBack { steps: 1 },
+                            "step_back",
+                        )
+                        .with_metrics(0.0, edge_margin),
+                    );
                 }
             }
         }
@@ -218,13 +227,16 @@ impl Rule for JointCropRule {
                         || pt.y > (1.0 - edge_margin);
 
                     if is_near_edge {
-                        return Some(Finding::new(
-                            self.id(),
-                            Severity::Major,
-                            Audience::Photographer,
-                            Action::StepBack { steps: 1 },
-                            "step_back",
-                        ));
+                        return Some(
+                            Finding::new(
+                                self.id(),
+                                Severity::Major,
+                                Audience::Photographer,
+                                Action::StepBack { steps: 1 },
+                                "step_back",
+                            )
+                            .with_metrics(0.0, edge_margin),
+                        );
                     }
                 }
             }

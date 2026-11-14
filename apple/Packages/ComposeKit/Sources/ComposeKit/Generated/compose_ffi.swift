@@ -415,6 +415,38 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterInt32: FfiConverterPrimitive {
+    typealias FfiType = Int32
+    typealias SwiftType = Int32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Int32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Int32, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterFloat: FfiConverterPrimitive {
+    typealias FfiType = Float
+    typealias SwiftType = Float
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Float {
+        return try lift(readFloat(&buf))
+    }
+
+    public static func write(_ value: Float, into buf: inout [UInt8]) {
+        writeFloat(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
     typealias FfiType = Double
     typealias SwiftType = Double
@@ -502,9 +534,24 @@ fileprivate struct FfiConverterString: FfiConverter {
 public protocol LiveEngineProtocol : AnyObject {
     
     /**
+     * One-shot composition analysis for still captures, bypassing temporal arbitration.
+     */
+    func analyzeStill(frameJson: String, lightJson: String?) throws  -> [FindingFfi]
+    
+    /**
      * Get current active backend name ("vision" or "onnx").
      */
     func backend()  -> String
+    
+    /**
+     * Reconfigures thresholds and arbiter dynamically at runtime.
+     */
+    func reloadConfig(configJson: String) throws 
+    
+    /**
+     * Resets arbiter state and temporal history.
+     */
+    func reset() 
     
     /**
      * Set a rule ID to prioritize / focus on (halves delay).
@@ -586,6 +633,18 @@ public convenience init(configJson: String, backend: String)throws  {
 
     
     /**
+     * One-shot composition analysis for still captures, bypassing temporal arbitration.
+     */
+open func analyzeStill(frameJson: String, lightJson: String?)throws  -> [FindingFfi] {
+    return try  FfiConverterSequenceTypeFindingFfi.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_compose_ffi_fn_method_liveengine_analyze_still(self.uniffiClonePointer(),
+        FfiConverterString.lower(frameJson),
+        FfiConverterOptionString.lower(lightJson),$0
+    )
+})
+}
+    
+    /**
      * Get current active backend name ("vision" or "onnx").
      */
 open func backend() -> String {
@@ -593,6 +652,25 @@ open func backend() -> String {
     uniffi_compose_ffi_fn_method_liveengine_backend(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * Reconfigures thresholds and arbiter dynamically at runtime.
+     */
+open func reloadConfig(configJson: String)throws  {try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_compose_ffi_fn_method_liveengine_reload_config(self.uniffiClonePointer(),
+        FfiConverterString.lower(configJson),$0
+    )
+}
+}
+    
+    /**
+     * Resets arbiter state and temporal history.
+     */
+open func reset() {try! rustCall() {
+    uniffi_compose_ffi_fn_method_liveengine_reset(self.uniffiClonePointer(),$0
+    )
+}
 }
     
     /**
@@ -684,19 +762,245 @@ public func FfiConverterTypeLiveEngine_lower(_ value: LiveEngine) -> UnsafeMutab
 
 
 /**
+ * Complete composition finding record exposed to UniFFI.
+ */
+public struct FindingFfi {
+    public var id: String
+    public var severity: SeverityFfi
+    public var audience: AudienceFfi
+    public var primaryAction: ActionFfi
+    public var secondaryAction: ActionFfi?
+    public var hintKey: String
+    public var hint: HintItemFfi
+    public var hintText: String
+    public var value: Float?
+    public var target: Float?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, severity: SeverityFfi, audience: AudienceFfi, primaryAction: ActionFfi, secondaryAction: ActionFfi?, hintKey: String, hint: HintItemFfi, hintText: String, value: Float?, target: Float?) {
+        self.id = id
+        self.severity = severity
+        self.audience = audience
+        self.primaryAction = primaryAction
+        self.secondaryAction = secondaryAction
+        self.hintKey = hintKey
+        self.hint = hint
+        self.hintText = hintText
+        self.value = value
+        self.target = target
+    }
+}
+
+
+
+extension FindingFfi: Equatable, Hashable {
+    public static func ==(lhs: FindingFfi, rhs: FindingFfi) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.severity != rhs.severity {
+            return false
+        }
+        if lhs.audience != rhs.audience {
+            return false
+        }
+        if lhs.primaryAction != rhs.primaryAction {
+            return false
+        }
+        if lhs.secondaryAction != rhs.secondaryAction {
+            return false
+        }
+        if lhs.hintKey != rhs.hintKey {
+            return false
+        }
+        if lhs.hint != rhs.hint {
+            return false
+        }
+        if lhs.hintText != rhs.hintText {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(severity)
+        hasher.combine(audience)
+        hasher.combine(primaryAction)
+        hasher.combine(secondaryAction)
+        hasher.combine(hintKey)
+        hasher.combine(hint)
+        hasher.combine(hintText)
+        hasher.combine(value)
+        hasher.combine(target)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFindingFfi: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FindingFfi {
+        return
+            try FindingFfi(
+                id: FfiConverterString.read(from: &buf), 
+                severity: FfiConverterTypeSeverityFfi.read(from: &buf), 
+                audience: FfiConverterTypeAudienceFfi.read(from: &buf), 
+                primaryAction: FfiConverterTypeActionFfi.read(from: &buf), 
+                secondaryAction: FfiConverterOptionTypeActionFfi.read(from: &buf), 
+                hintKey: FfiConverterString.read(from: &buf), 
+                hint: FfiConverterTypeHintItemFfi.read(from: &buf), 
+                hintText: FfiConverterString.read(from: &buf), 
+                value: FfiConverterOptionFloat.read(from: &buf), 
+                target: FfiConverterOptionFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FindingFfi, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterTypeSeverityFfi.write(value.severity, into: &buf)
+        FfiConverterTypeAudienceFfi.write(value.audience, into: &buf)
+        FfiConverterTypeActionFfi.write(value.primaryAction, into: &buf)
+        FfiConverterOptionTypeActionFfi.write(value.secondaryAction, into: &buf)
+        FfiConverterString.write(value.hintKey, into: &buf)
+        FfiConverterTypeHintItemFfi.write(value.hint, into: &buf)
+        FfiConverterString.write(value.hintText, into: &buf)
+        FfiConverterOptionFloat.write(value.value, into: &buf)
+        FfiConverterOptionFloat.write(value.target, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFindingFfi_lift(_ buf: RustBuffer) throws -> FindingFfi {
+    return try FfiConverterTypeFindingFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFindingFfi_lower(_ value: FindingFfi) -> RustBuffer {
+    return FfiConverterTypeFindingFfi.lower(value)
+}
+
+
+/**
+ * Localized prompt strings exposed to UniFFI.
+ */
+public struct HintItemFfi {
+    public var primary: String
+    public var secondary: String
+    public var spoken: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(primary: String, secondary: String, spoken: String) {
+        self.primary = primary
+        self.secondary = secondary
+        self.spoken = spoken
+    }
+}
+
+
+
+extension HintItemFfi: Equatable, Hashable {
+    public static func ==(lhs: HintItemFfi, rhs: HintItemFfi) -> Bool {
+        if lhs.primary != rhs.primary {
+            return false
+        }
+        if lhs.secondary != rhs.secondary {
+            return false
+        }
+        if lhs.spoken != rhs.spoken {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(primary)
+        hasher.combine(secondary)
+        hasher.combine(spoken)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHintItemFfi: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HintItemFfi {
+        return
+            try HintItemFfi(
+                primary: FfiConverterString.read(from: &buf), 
+                secondary: FfiConverterString.read(from: &buf), 
+                spoken: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HintItemFfi, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.primary, into: &buf)
+        FfiConverterString.write(value.secondary, into: &buf)
+        FfiConverterString.write(value.spoken, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHintItemFfi_lift(_ buf: RustBuffer) throws -> HintItemFfi {
+    return try FfiConverterTypeHintItemFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHintItemFfi_lower(_ value: HintItemFfi) -> RustBuffer {
+    return FfiConverterTypeHintItemFfi.lower(value)
+}
+
+
+/**
  * Output returned by LiveEngine on every analyzed frame.
  */
 public struct LiveOutputFfi {
     public var activeFindingId: String?
+    public var severity: SeverityFfi
+    public var audience: AudienceFfi?
+    public var primaryAction: ActionFfi?
+    public var secondaryAction: ActionFfi?
+    public var value: Float?
+    public var target: Float?
     public var hintKey: String?
+    public var hint: HintItemFfi?
+    public var hintText: String?
     public var isGoodToShoot: Bool
     public var rawFindingsCount: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(activeFindingId: String?, hintKey: String?, isGoodToShoot: Bool, rawFindingsCount: UInt32) {
+    public init(activeFindingId: String?, severity: SeverityFfi, audience: AudienceFfi?, primaryAction: ActionFfi?, secondaryAction: ActionFfi?, value: Float?, target: Float?, hintKey: String?, hint: HintItemFfi?, hintText: String?, isGoodToShoot: Bool, rawFindingsCount: UInt32) {
         self.activeFindingId = activeFindingId
+        self.severity = severity
+        self.audience = audience
+        self.primaryAction = primaryAction
+        self.secondaryAction = secondaryAction
+        self.value = value
+        self.target = target
         self.hintKey = hintKey
+        self.hint = hint
+        self.hintText = hintText
         self.isGoodToShoot = isGoodToShoot
         self.rawFindingsCount = rawFindingsCount
     }
@@ -709,7 +1013,31 @@ extension LiveOutputFfi: Equatable, Hashable {
         if lhs.activeFindingId != rhs.activeFindingId {
             return false
         }
+        if lhs.severity != rhs.severity {
+            return false
+        }
+        if lhs.audience != rhs.audience {
+            return false
+        }
+        if lhs.primaryAction != rhs.primaryAction {
+            return false
+        }
+        if lhs.secondaryAction != rhs.secondaryAction {
+            return false
+        }
+        if lhs.value != rhs.value {
+            return false
+        }
+        if lhs.target != rhs.target {
+            return false
+        }
         if lhs.hintKey != rhs.hintKey {
+            return false
+        }
+        if lhs.hint != rhs.hint {
+            return false
+        }
+        if lhs.hintText != rhs.hintText {
             return false
         }
         if lhs.isGoodToShoot != rhs.isGoodToShoot {
@@ -723,7 +1051,15 @@ extension LiveOutputFfi: Equatable, Hashable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(activeFindingId)
+        hasher.combine(severity)
+        hasher.combine(audience)
+        hasher.combine(primaryAction)
+        hasher.combine(secondaryAction)
+        hasher.combine(value)
+        hasher.combine(target)
         hasher.combine(hintKey)
+        hasher.combine(hint)
+        hasher.combine(hintText)
         hasher.combine(isGoodToShoot)
         hasher.combine(rawFindingsCount)
     }
@@ -738,7 +1074,15 @@ public struct FfiConverterTypeLiveOutputFfi: FfiConverterRustBuffer {
         return
             try LiveOutputFfi(
                 activeFindingId: FfiConverterOptionString.read(from: &buf), 
+                severity: FfiConverterTypeSeverityFfi.read(from: &buf), 
+                audience: FfiConverterOptionTypeAudienceFfi.read(from: &buf), 
+                primaryAction: FfiConverterOptionTypeActionFfi.read(from: &buf), 
+                secondaryAction: FfiConverterOptionTypeActionFfi.read(from: &buf), 
+                value: FfiConverterOptionFloat.read(from: &buf), 
+                target: FfiConverterOptionFloat.read(from: &buf), 
                 hintKey: FfiConverterOptionString.read(from: &buf), 
+                hint: FfiConverterOptionTypeHintItemFfi.read(from: &buf), 
+                hintText: FfiConverterOptionString.read(from: &buf), 
                 isGoodToShoot: FfiConverterBool.read(from: &buf), 
                 rawFindingsCount: FfiConverterUInt32.read(from: &buf)
         )
@@ -746,7 +1090,15 @@ public struct FfiConverterTypeLiveOutputFfi: FfiConverterRustBuffer {
 
     public static func write(_ value: LiveOutputFfi, into buf: inout [UInt8]) {
         FfiConverterOptionString.write(value.activeFindingId, into: &buf)
+        FfiConverterTypeSeverityFfi.write(value.severity, into: &buf)
+        FfiConverterOptionTypeAudienceFfi.write(value.audience, into: &buf)
+        FfiConverterOptionTypeActionFfi.write(value.primaryAction, into: &buf)
+        FfiConverterOptionTypeActionFfi.write(value.secondaryAction, into: &buf)
+        FfiConverterOptionFloat.write(value.value, into: &buf)
+        FfiConverterOptionFloat.write(value.target, into: &buf)
         FfiConverterOptionString.write(value.hintKey, into: &buf)
+        FfiConverterOptionTypeHintItemFfi.write(value.hint, into: &buf)
+        FfiConverterOptionString.write(value.hintText, into: &buf)
         FfiConverterBool.write(value.isGoodToShoot, into: &buf)
         FfiConverterUInt32.write(value.rawFindingsCount, into: &buf)
     }
@@ -766,6 +1118,254 @@ public func FfiConverterTypeLiveOutputFfi_lift(_ buf: RustBuffer) throws -> Live
 public func FfiConverterTypeLiveOutputFfi_lower(_ value: LiveOutputFfi) -> RustBuffer {
     return FfiConverterTypeLiveOutputFfi.lower(value)
 }
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Photographic guidance action suggested by the engine exposed to UniFFI.
+ */
+
+public enum ActionFfi {
+    
+    case rotate(deg: Float, clockwise: Bool
+    )
+    case holdVertical
+    case lowerPhone
+    case stepBack(steps: Int32
+    )
+    case stepForward(steps: Int32
+    )
+    case panLeft
+    case panRight
+    case tiltUp
+    case tiltDown
+    case switchZoom(factor: Float
+    )
+    case enableFill
+    case cleanLens
+    case moveToShade
+    case turnSubject(deg: Float
+    )
+    case useNightMode
+    case good
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeActionFfi: FfiConverterRustBuffer {
+    typealias SwiftType = ActionFfi
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ActionFfi {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .rotate(deg: try FfiConverterFloat.read(from: &buf), clockwise: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .holdVertical
+        
+        case 3: return .lowerPhone
+        
+        case 4: return .stepBack(steps: try FfiConverterInt32.read(from: &buf)
+        )
+        
+        case 5: return .stepForward(steps: try FfiConverterInt32.read(from: &buf)
+        )
+        
+        case 6: return .panLeft
+        
+        case 7: return .panRight
+        
+        case 8: return .tiltUp
+        
+        case 9: return .tiltDown
+        
+        case 10: return .switchZoom(factor: try FfiConverterFloat.read(from: &buf)
+        )
+        
+        case 11: return .enableFill
+        
+        case 12: return .cleanLens
+        
+        case 13: return .moveToShade
+        
+        case 14: return .turnSubject(deg: try FfiConverterFloat.read(from: &buf)
+        )
+        
+        case 15: return .useNightMode
+        
+        case 16: return .good
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ActionFfi, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .rotate(deg,clockwise):
+            writeInt(&buf, Int32(1))
+            FfiConverterFloat.write(deg, into: &buf)
+            FfiConverterBool.write(clockwise, into: &buf)
+            
+        
+        case .holdVertical:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .lowerPhone:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .stepBack(steps):
+            writeInt(&buf, Int32(4))
+            FfiConverterInt32.write(steps, into: &buf)
+            
+        
+        case let .stepForward(steps):
+            writeInt(&buf, Int32(5))
+            FfiConverterInt32.write(steps, into: &buf)
+            
+        
+        case .panLeft:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .panRight:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .tiltUp:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .tiltDown:
+            writeInt(&buf, Int32(9))
+        
+        
+        case let .switchZoom(factor):
+            writeInt(&buf, Int32(10))
+            FfiConverterFloat.write(factor, into: &buf)
+            
+        
+        case .enableFill:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .cleanLens:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .moveToShade:
+            writeInt(&buf, Int32(13))
+        
+        
+        case let .turnSubject(deg):
+            writeInt(&buf, Int32(14))
+            FfiConverterFloat.write(deg, into: &buf)
+            
+        
+        case .useNightMode:
+            writeInt(&buf, Int32(15))
+        
+        
+        case .good:
+            writeInt(&buf, Int32(16))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeActionFfi_lift(_ buf: RustBuffer) throws -> ActionFfi {
+    return try FfiConverterTypeActionFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeActionFfi_lower(_ value: ActionFfi) -> RustBuffer {
+    return FfiConverterTypeActionFfi.lower(value)
+}
+
+
+
+extension ActionFfi: Equatable, Hashable {}
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Target audience of the instruction exposed to UniFFI.
+ */
+
+public enum AudienceFfi {
+    
+    case photographer
+    case subject
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudienceFfi: FfiConverterRustBuffer {
+    typealias SwiftType = AudienceFfi
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudienceFfi {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .photographer
+        
+        case 2: return .subject
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AudienceFfi, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .photographer:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .subject:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudienceFfi_lift(_ buf: RustBuffer) throws -> AudienceFfi {
+    return try FfiConverterTypeAudienceFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudienceFfi_lower(_ value: AudienceFfi) -> RustBuffer {
+    return FfiConverterTypeAudienceFfi.lower(value)
+}
+
+
+
+extension AudienceFfi: Equatable, Hashable {}
+
+
 
 
 public enum FfiError {
@@ -842,6 +1442,111 @@ extension FfiError: Foundation.LocalizedError {
     }
 }
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Severity level for composition findings exposed to UniFFI.
+ */
+
+public enum SeverityFfi {
+    
+    case good
+    case minor
+    case major
+    case critical
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSeverityFfi: FfiConverterRustBuffer {
+    typealias SwiftType = SeverityFfi
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SeverityFfi {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .good
+        
+        case 2: return .minor
+        
+        case 3: return .major
+        
+        case 4: return .critical
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SeverityFfi, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .good:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .minor:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .major:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .critical:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSeverityFfi_lift(_ buf: RustBuffer) throws -> SeverityFfi {
+    return try FfiConverterTypeSeverityFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSeverityFfi_lower(_ value: SeverityFfi) -> RustBuffer {
+    return FfiConverterTypeSeverityFfi.lower(value)
+}
+
+
+
+extension SeverityFfi: Equatable, Hashable {}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionFloat: FfiConverterRustBuffer {
+    typealias SwiftType = Float?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterFloat.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterFloat.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -866,6 +1571,103 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     }
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeHintItemFfi: FfiConverterRustBuffer {
+    typealias SwiftType = HintItemFfi?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeHintItemFfi.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeHintItemFfi.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeActionFfi: FfiConverterRustBuffer {
+    typealias SwiftType = ActionFfi?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeActionFfi.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeActionFfi.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAudienceFfi: FfiConverterRustBuffer {
+    typealias SwiftType = AudienceFfi?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAudienceFfi.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAudienceFfi.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFindingFfi: FfiConverterRustBuffer {
+    typealias SwiftType = [FindingFfi]
+
+    public static func write(_ value: [FindingFfi], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFindingFfi.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FindingFfi] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FindingFfi]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFindingFfi.read(from: &buf))
+        }
+        return seq
+    }
+}
+
 private enum InitializationResult {
     case ok
     case contractVersionMismatch
@@ -881,7 +1683,16 @@ private var initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_compose_ffi_checksum_method_liveengine_analyze_still() != 30425) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_compose_ffi_checksum_method_liveengine_backend() != 51465) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_compose_ffi_checksum_method_liveengine_reload_config() != 27111) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_compose_ffi_checksum_method_liveengine_reset() != 35511) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_compose_ffi_checksum_method_liveengine_set_focus() != 63041) {
