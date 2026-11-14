@@ -40,7 +40,7 @@ camera-assist/
 │  ├─ review-bridge/                  （计划中）flutter_rust_bridge 绑定 → 供 Flutter 桌面端调用
 │  └─ compose-eval/                   （计划中）Rust 命令行评测工具（ONNX 后端）
 ├─ apple/                             Apple 生态工程
-│  ├─ CameraApp/                      ★ 帮拍相机 iOS 主应用（当前为静态文字占位，端到端未接线）
+│  ├─ CameraApp/                      ★ 帮拍相机 iOS 主应用（CameraCoordinator 端到端接线、取景预览、24MP 拍照与多焦段预设已完成，TASK-08）
 │  ├─ CameraAppClip/                  ★ 路人帮拍 App Clip（当前为 Color.black 桩）
 │  ├─ ReviewApp/                      （计划中）照片复盘 iOS 应用（SwiftUI + PhotoKit 非破坏性写回 + 分享扩展）
 │  ├─ Packages/
@@ -63,20 +63,21 @@ camera-assist/
    └─ eval-dataset/                   （计划中）离线标注测试数据集
 ```
 
-### 当前实现状态（2026-11-03）
+### 当前实现状态（2026-11-14）
 
-- **核心基座与规则全量交付（TASK-01、TASK-02、TASK-03、TASK-04、TASK-06、TASK-10）**：
+- **核心基座与管线全量交付（TASK-01、TASK-02、TASK-03、TASK-04、TASK-05、TASK-06、TASK-07、TASK-08、TASK-10）**：
   - **`compose-core` 规则 A–G 闭环**：共 19 条构图、光线与距离规则（`light.backlit`, `light.harsh_top`, `light.flat_front`, `light.side_harsh`, `distance.distortion`, `distance.ultra_wide_edge`, `light.low_light` 等），实际消费 `ctx.light` 与镜头内参；支持 `enterDelayOverride` 仲裁器延迟覆盖与 glob 匹配；Merger 冲突焦段去重与 HFOV 范围安全（TASK-04）。暂缓规则：`light.sun_in_frame`、`lens.smudge`、`distance.fill_range`。
-  - **20 组黄金测试向量**：`fixtures/golden`（`001`–`020`），Rust 检验器与 Swift 模式校验均实现 exact finding-set parity 100% 通过（TASK-02/04）。
-  - **`ComposeKit` 严格链接**：通过 `.binaryTarget` 链接 `ComposeCore.xcframework` 并禁止静默 mock（TASK-01）。
+  - **20 组黄金测试向量**：`fixtures/golden`（`001`–`020`），Rust 检验器与 Swift 模式校验均实现 exact finding-set parity 100% 通过（TASK-02/04/05）。
+  - **`ComposeKit` 严格链接与 FFI 契约扩展**：通过 `.binaryTarget` 链接 `ComposeCore.xcframework` 并禁止静默 mock（TASK-01）；全量导出 `reload_config`、`analyze_still`、`reset` 与 `backend`，输出 severity、全部 16 种 action、target 与数值 metrics，双语文案词典对齐（TASK-05）。
   - **`CaptureKit` 24MP 完整采集**：透出未压缩 `CVPixelBuffer` 与完整 EXIF/相机内参/曝光元数据；`RotationCoordinator` 真实 KVO 朝向监听与对齐；系统热状态监听自动 60→30fps 平滑降帧与恢复（TASK-06）。
+  - **`PerceptionKit` 真实 Vision 与运动插值**：`VisionFrameProcessor` 落地多率调度（15Hz 姿态、10Hz 人脸回退、8Hz 掩码、4Hz 亮度探针）；`FrameSyncHub` 实施运动线性插值与姿态补偿（< 10ms SLA）；组装标准 `PerceptionFrame` 与 `LightContext`（TASK-07）。
+  - **`CameraApp` 端到端集成**：`CameraCoordinator` 串联采集、感知与 `LiveComposer` 规则评估（< 1.0ms SLA）；`CameraPreviewView` 实现 live 取景预览与点击对焦；支持 24MP 快门拍照落盘与多焦段预设（0.5x, 1x, 2x, 3x）（TASK-08）。
   - **`SyncKit` 纯 Swift E2EE 通信**：100% 纯 Swift 实现（零 C/Rust 依赖），Curve25519 + HKDF + AES-GCM-256 加密、`ReferencePackage`/`CapturePackage` 编解码、会话令牌/二维码、WebSocket/Bonjour 传输抽象及 17 项单元测试（TASK-10）。
   - **质量门禁体系**：10 步门禁脚本升级真实 compiled `.app` bundle 体积测量、合成自测标记（`SYNTHETIC_SELF_TEST`）与字段级 Swift Parity 比对（TASK-02）。
-- **当前优先推进（TASK-05, TASK-07, TASK-08）**：
-  - `ComposeKit` / FFI：扩展 UniFFI 契约输出 severity、完整 action 与 target 并重生成绑定（TASK-05）。
-  - `PerceptionKit`：基于 TASK-06 透出数据真正执行 Vision 姿态/掩码/人脸请求并做运动插值（TASK-07）。
-  - `CameraApp`：端到端串联采集、感知、推理流与快门拍照（TASK-08）。
-- **待办特性**：用户引导 HUD（TASK-09）、App Clip 助手交互流程（TASK-11）、语音 TTS（TASK-12）、照片复盘应用 `ReviewApp` 与桌面端（TASK-13）。
+- **当前优先推进（TASK-09, TASK-11）**：
+  - 用户引导 HUD（TASK-09）：实时提示胶囊、目标线与触觉确认。
+  - App Clip 助手交互流程（TASK-11）：扫码拉包、对齐引导与成片秒级回传。
+- **待办特性**：语音 TTS（TASK-12）、照片复盘应用 `ReviewApp` 与桌面端（TASK-13）。
 - 逐项状态与详细任务序列见 [研发任务优先级与双项目协同规划 · 第 8 节](docs/development-priorities.md#8-修订后的待办任务序列)。
 
 ---

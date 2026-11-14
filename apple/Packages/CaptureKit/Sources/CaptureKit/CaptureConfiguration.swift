@@ -88,6 +88,7 @@ public struct CaptureConfiguration: Sendable, Equatable {
 public enum CameraLensType: String, Sendable, CaseIterable {
     case ultraWide = "UltraWide"
     case wide = "Wide"
+    case telephoto2x = "Telephoto2x"
     case telephoto = "Telephoto"
     case virtualMultiCamera = "VirtualMultiCamera"
 }

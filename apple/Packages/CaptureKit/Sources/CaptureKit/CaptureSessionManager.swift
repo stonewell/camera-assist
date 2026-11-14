@@ -316,6 +316,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
             switch lens {
             case .ultraWide: targetZoom = 1.0
             case .wide, .virtualMultiCamera: targetZoom = 2.0
+            case .telephoto2x: targetZoom = 4.0
             case .telephoto: targetZoom = 6.0
             }
             if (try? dev.lockForConfiguration()) != nil {

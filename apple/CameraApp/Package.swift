@@ -31,6 +31,8 @@ let package = Package(
             path: ".",
             sources: [
                 "CameraApp.swift",
+                "CameraFeature/CameraCoordinator.swift",
+                "CameraFeature/CameraPreviewView.swift",
                 "CameraFeature/PerceptionDebugHUD.swift"
             ]
         ),

@@ -28,15 +28,15 @@ camera-assist/
 - **Rule**: All core composition and lighting evaluation algorithms must reside here and match golden test vectors.
 
 ### `apple/Packages/` (Modular Swift Packages)
-- **`ComposeKit`**: Swift wrapper over UniFFI `compose-ffi` bindings. Exposes actor-isolated `LiveComposer` and Sendable Swift models (TASK-01 completed strict `.binaryTarget` linking without silent mock).
+- **`ComposeKit`**: Swift wrapper over UniFFI `compose-ffi` bindings. Exposes actor-isolated `LiveComposer` and Sendable Swift models (TASK-01 completed strict `.binaryTarget` linking without silent mock; TASK-05 extended FFI contract, regenerated bindings, and full 20 golden vector parity).
 - **`CaptureKit`**: Pure AVFoundation pipeline for 24MP capture, zero shutter lag, responsive capture, `CVPixelBuffer` & EXIF/metadata pass-through, real KVO `RotationCoordinator`, and 60->30fps thermal throttling & restore (completed in TASK-06).
-- **`PerceptionKit`**: Vision framework and CoreMotion attitude tracking pipelines (`FrameSyncHub`, 1€ filter, pose estimation).
+- **`PerceptionKit`**: Vision framework and CoreMotion attitude tracking pipelines (`FrameSyncHub`, 1€ filter, pose estimation, tiered multi-rate scheduling, linear motion interpolation, and `PerceptionFrame` / `LightContext` assembly; completed in TASK-07).
 - **`SyncKit`**: Cross-device E2EE ephemeral session synchronization (Curve25519 + HKDF + AES-GCM, reference/capture packages, session tokens, WebSocket and Bonjour transport abstraction, 17 unit tests; completed in TASK-10). **Strictly 100% pure Swift** with zero C/Rust dependencies.
 
 ### `apple/CameraApp/` (Main iOS Application)
 - **Role**: Full-featured iOS camera assistant application.
 - **Dependencies**: Depends on `CaptureKit`, `PerceptionKit`, `ComposeKit`, and `SyncKit`.
-- **Entry**: `CameraApp.swift` (SwiftUI `@main`) providing the viewfinder, HUD toggle, and embedding `PerceptionDebugHUD`.
+- **Entry**: `CameraApp.swift` (SwiftUI `@main`) providing the viewfinder, HUD toggle, embedding `PerceptionDebugHUD`, and coordinating AVFoundation 24MP capture, live preview, zoom presets, and `< 1.0ms` rule evaluation via `CameraCoordinator` (completed in TASK-08).
 - **Target Type**: SwiftPM library target built with `xtool`.
 
 ### `apple/CameraAppClip/` (App Clip)

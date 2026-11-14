@@ -27,7 +27,8 @@ def main() -> int:
         compose_kit_dir / "Package.swift",
         sync_kit_dir / "Package.swift",
         capture_kit_dir / "Package.swift",
-        perception_kit_dir / "Package.swift"
+        perception_kit_dir / "Package.swift",
+        camera_app_dir / "Package.swift"
     ]
 
     for pkg in packages:
@@ -93,7 +94,8 @@ def main() -> int:
         perception_src / "Motion" / "AttitudeTracker.swift",
         perception_src / "Vision" / "BodyPoseAnalyzer.swift",
         perception_src / "Vision" / "MaskSummarizer.swift",
-        perception_src / "Vision" / "SubjectTracker.swift"
+        perception_src / "Vision" / "SubjectTracker.swift",
+        perception_src / "Vision" / "VisionFrameProcessor.swift"
     ]
     for fp in perception_files:
         if not fp.is_file():
@@ -148,6 +150,11 @@ def main() -> int:
         "PerceptionFrame": [
             "t: Double", "subjects: [Subject]", "primary_subject_index: Int?",
             "posture: Posture", "camera: CameraIntrinsics", "exposure: ExposureSummary"
+        ],
+        "LightContext": [
+            "direction: LightDirection", "quality: LightQuality",
+            "sun_azimuth_deg: Float?", "sun_elevation_deg: Float?",
+            "face_to_bg_ratio: Float?", "ev: Float", "confidence: Float"
         ]
     }
 
@@ -180,16 +187,72 @@ def main() -> int:
         return 1
     print("  ✓ Found PerceptionKit test suite: PerceptionKitTests.swift")
 
-    # 6. Check Perception Debug HUD
-    debug_hud_file = camera_app_dir / "CameraFeature" / "PerceptionDebugHUD.swift"
-    if not debug_hud_file.is_file():
-        print(f"[FAIL] Missing PerceptionDebugHUD file: {debug_hud_file}", file=sys.stderr)
-        return 1
-    print(f"  ✓ Found CameraApp UI component: {debug_hud_file.name}")
+    # 6. Check CameraApp UI and Coordination Components (TASK-08)
+    print("--- [validate-swift-parity] Checking CameraApp End-to-End Components (TASK-08) ---")
+    camera_app_files = [
+        camera_app_dir / "CameraApp.swift",
+        camera_app_dir / "CameraFeature" / "CameraCoordinator.swift",
+        camera_app_dir / "CameraFeature" / "CameraPreviewView.swift",
+        camera_app_dir / "CameraFeature" / "PerceptionDebugHUD.swift",
+    ]
+    for fp in camera_app_files:
+        if not fp.is_file():
+            print(f"[FAIL] Missing CameraApp file: {fp}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Found CameraApp source: {fp.relative_to(repo_root)}")
+
+    # 6.1 Check CameraCoordinator tokens and wiring
+    coordinator_text = (camera_app_dir / "CameraFeature" / "CameraCoordinator.swift").read_text(encoding="utf-8")
+    expected_coord_tokens = [
+        "class CameraCoordinator",
+        "CaptureSessionManager",
+        "CapturePhotoController",
+        "RotationCoordinatorBridge",
+        "FrameSyncHub",
+        "AttitudeTracker",
+        "PerceptionScheduler",
+        "BodyPoseAnalyzer",
+        "LiveComposer",
+        '"0.5x"', '"1x"', '"2x"', '"3x"',
+        "engineLatencySLACeilingMs",
+        "selectZoomPreset",
+        "capturePhoto",
+        "FrameEvaluationSnapshot",
+        "CameraZoomPreset"
+    ]
+    for token in expected_coord_tokens:
+        if token not in coordinator_text:
+            print(f"[FAIL] CameraCoordinator.swift missing required token: {token}", file=sys.stderr)
+            return 1
+    print(f"  ✓ CameraCoordinator.swift verified with all {len(expected_coord_tokens)} integration tokens.")
+
+    # 6.2 Check CameraPreviewView tokens
+    preview_text = (camera_app_dir / "CameraFeature" / "CameraPreviewView.swift").read_text(encoding="utf-8")
+    for token in ["AVCaptureVideoPreviewLayer", "struct CameraPreviewView"]:
+        if token not in preview_text:
+            print(f"[FAIL] CameraPreviewView.swift missing required token: {token}", file=sys.stderr)
+            return 1
+    print("  ✓ CameraPreviewView.swift verified with AVCaptureVideoPreviewLayer and CameraPreviewView.")
+
+    # 6.3 Check PerceptionDebugHUD tokens
+    hud_text = (camera_app_dir / "CameraFeature" / "PerceptionDebugHUD.swift").read_text(encoding="utf-8")
+    for token in ["isWithinLatencySLA", "StandardSkeletalBones", "struct PerceptionDebugHUD"]:
+        if token not in hud_text:
+            print(f"[FAIL] PerceptionDebugHUD.swift missing required token: {token}", file=sys.stderr)
+            return 1
+    print("  ✓ PerceptionDebugHUD.swift verified with latency SLA and skeletal bones.")
+
+    # 6.4 Check CameraApp.swift tokens
+    app_text = (camera_app_dir / "CameraApp.swift").read_text(encoding="utf-8")
+    for token in ["CameraCoordinator", "CameraPreviewView", "PerceptionDebugHUD", "struct CameraApp", "CameraViewfinderScreen"]:
+        if token not in app_text:
+            print(f"[FAIL] CameraApp.swift missing required token: {token}", file=sys.stderr)
+            return 1
+    print("  ✓ CameraApp.swift verified with CameraCoordinator, CameraPreviewView, and PerceptionDebugHUD.")
 
     # 7. Check ComposeKit & SyncKit Tests
     tests_dir = compose_kit_dir / "Tests" / "ComposeKitTests"
-    required_tests = ["GoldenVectorTests.swift", "ConcurrencyTests.swift"]
+    required_tests = ["GoldenVectorTests.swift", "ConcurrencyTests.swift", "ComposeKitTests.swift"]
     for f in required_tests:
         fp = tests_dir / f
         if not fp.is_file():
@@ -214,6 +277,37 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    # Parity check: Rust golden runner constant must match EXPECTED_GOLDEN_VECTORS
+    rust_golden_runner = repo_root / "core" / "compose-core" / "tests" / "golden_runner.rs"
+    if not rust_golden_runner.is_file():
+        print(f"[FAIL] Missing Rust golden runner test: {rust_golden_runner}", file=sys.stderr)
+        return 1
+    runner_text = rust_golden_runner.read_text(encoding="utf-8")
+    runner_match = re.search(r"EXPECTED_VECTORS\s*:\s*usize\s*=\s*(\d+);", runner_text)
+    if not runner_match or int(runner_match.group(1)) != EXPECTED_GOLDEN_VECTORS:
+        val = runner_match.group(1) if runner_match else "not found"
+        print(
+            f"[FAIL] golden_runner.rs EXPECTED_VECTORS ({val}) != EXPECTED_GOLDEN_VECTORS ({EXPECTED_GOLDEN_VECTORS})",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"  ✓ golden_runner.rs EXPECTED_VECTORS matches {EXPECTED_GOLDEN_VECTORS}.")
+
+    # Parity check: Swift GoldenVectorTests must assert exact vector count
+    golden_swift_test = tests_dir / "GoldenVectorTests.swift"
+    if not golden_swift_test.is_file():
+        print(f"[FAIL] Missing GoldenVectorTests.swift: {golden_swift_test}", file=sys.stderr)
+        return 1
+    golden_swift_text = golden_swift_test.read_text(encoding="utf-8")
+    expected_assert = f"XCTAssertEqual(files.count, {EXPECTED_GOLDEN_VECTORS}"
+    if expected_assert not in golden_swift_text:
+        print(
+            f"[FAIL] GoldenVectorTests.swift does not assert '{expected_assert}' (expected {EXPECTED_GOLDEN_VECTORS} golden vectors)",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"  ✓ GoldenVectorTests.swift asserts exact vector count ({EXPECTED_GOLDEN_VECTORS}).")
 
     valid_severities = {"Good", "Minor", "Major", "Critical"}
     for gv in sorted(golden_vectors):
@@ -407,6 +501,96 @@ def main() -> int:
     print("  ✓ scripts/run-swift-tests.sh enforces COMPOSE_REQUIRE_FFI=1 on macOS.")
 
     print("--- [validate-swift-parity] ComposeKit FFI wiring gate passed (TASK-01). ---")
+
+    # 10. TASK-05 gate: Extended FFI Contract, Regenerated Bindings & Swift Parity
+    print("--- [validate-swift-parity] Checking Extended FFI Contract & Swift Parity (TASK-05) ---")
+
+    gen_swift_text = (gen_dir / "compose_ffi.swift").read_text(encoding="utf-8")
+    gen_header_text = (gen_dir / "compose_ffiFFI.h").read_text(encoding="utf-8")
+    compose_models_text = (sources_dir / "Models.swift").read_text(encoding="utf-8")
+
+    # 10.1 Check Generated compose_ffi.swift records and enums
+    expected_ffi_types = [
+        "SeverityFfi", "AudienceFfi", "ActionFfi", "HintItemFfi", "FindingFfi", "LiveOutputFfi"
+    ]
+    for t in expected_ffi_types:
+        if t not in gen_swift_text:
+            print(f"[FAIL] Generated compose_ffi.swift missing type {t}", file=sys.stderr)
+            return 1
+    print(f"  ✓ compose_ffi.swift contains all {len(expected_ffi_types)} expected UniFFI types.")
+
+    # 10.2 Check ActionFfi all 16 cases in Generated compose_ffi.swift
+    action_ffi_cases = [
+        "rotate", "holdVertical", "lowerPhone", "stepBack", "stepForward",
+        "panLeft", "panRight", "tiltUp", "tiltDown", "switchZoom",
+        "enableFill", "cleanLens", "moveToShade", "turnSubject", "useNightMode", "good"
+    ]
+    for c in action_ffi_cases:
+        if f"case {c}" not in gen_swift_text:
+            print(f"[FAIL] ActionFfi missing case: {c}", file=sys.stderr)
+            return 1
+    print(f"  ✓ ActionFfi contains all {len(action_ffi_cases)} cases in generated Swift bindings.")
+
+    # 10.3 Check LiveEngine protocol methods in compose_ffi.swift
+    expected_engine_methods = ["reloadConfig", "analyzeStill", "reset", "backend"]
+    for m in expected_engine_methods:
+        if f"func {m}" not in gen_swift_text:
+            print(f"[FAIL] LiveEngineProtocol missing method: {m}", file=sys.stderr)
+            return 1
+    print(f"  ✓ LiveEngineProtocol contains all extended methods: {expected_engine_methods}.")
+
+    # 10.4 Check compose_ffiFFI.h has header declarations
+    if len(gen_header_text.strip()) == 0:
+        print("[FAIL] compose_ffiFFI.h is empty", file=sys.stderr)
+        return 1
+    print(f"  ✓ compose_ffiFFI.h verified ({len(gen_header_text)} bytes).")
+
+    # 10.5 Check Models.swift ComposeAction all 16 cases
+    for c in action_ffi_cases:
+        if f"case {c}" not in compose_models_text:
+            print(f"[FAIL] Models.swift ComposeAction missing case: {c}", file=sys.stderr)
+            return 1
+    print("  ✓ Models.swift ComposeAction all 16 cases verified.")
+
+    # 10.6 Check Models.swift types: ComposeSeverity, ComposeAudience, ComposeHint, ComposeFinding, ComposeOutput
+    for st in ["ComposeSeverity", "ComposeAudience", "ComposeHint", "ComposeFinding", "ComposeOutput"]:
+        if st not in compose_models_text:
+            print(f"[FAIL] Models.swift missing type: {st}", file=sys.stderr)
+            return 1
+    if "typealias HintItem = ComposeHint" not in compose_models_text:
+        print("[FAIL] Models.swift missing 'typealias HintItem = ComposeHint'", file=sys.stderr)
+        return 1
+    print("  ✓ Models.swift extended types and typealias verified.")
+
+    # 10.7 Check LiveComposer.swift methods: reloadConfig, analyzeStill, reset, backend
+    for m in ["reloadConfig", "analyzeStill", "reset", "backend"]:
+        if f"func {m}" not in live_composer:
+            print(f"[FAIL] LiveComposer.swift missing method: {m}", file=sys.stderr)
+            return 1
+    print("  ✓ LiveComposer.swift methods (reloadConfig, analyzeStill, reset, backend) verified.")
+
+    # 10.8 Check shared/hints/*.json coverage for all 20 golden vectors
+    hints_dir = repo_root / "shared" / "hints"
+    zh_hints = json.loads((hints_dir / "zh-Hans.json").read_text(encoding="utf-8"))["hints"]
+    en_hints = json.loads((hints_dir / "en.json").read_text(encoding="utf-8"))["hints"]
+
+    if "good" not in zh_hints or "good" not in en_hints:
+        print("[FAIL] 'good' key missing from shared/hints JSON files", file=sys.stderr)
+        return 1
+
+    for gv in golden_vectors:
+        with open(gv, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for item in data.get("expected_findings", []):
+            k = item["hint_key"]
+            if k not in zh_hints:
+                print(f"[FAIL] Hint key '{k}' from {gv.name} missing from zh-Hans.json", file=sys.stderr)
+                return 1
+            if k not in en_hints:
+                print(f"[FAIL] Hint key '{k}' from {gv.name} missing from en.json", file=sys.stderr)
+                return 1
+    print(f"  ✓ shared/hints coverage verified for all {len(golden_vectors)} golden vectors in zh-Hans and en.")
+    print("--- [validate-swift-parity] TASK-05 extended FFI contract parity gate passed. ---")
     return 0
 
 

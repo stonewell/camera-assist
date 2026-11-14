@@ -16,6 +16,10 @@ public struct DebugTelemetry: Sendable, Equatable {
     public var thermalState: String
     public var subjectCount: Int
 
+    public var isWithinLatencySLA: Bool {
+        latencyMs < 1.0
+    }
+
     public init(
         fps: Double = 60.0,
         latencyMs: Double = 4.7,
@@ -209,7 +213,11 @@ public struct PerceptionDebugHUD: View {
 
             HStack(spacing: 8) {
                 Label("\(Int(telemetry.fps)) FPS", systemImage: "speedometer")
-                Label(String(format: "%.1f ms", telemetry.latencyMs), systemImage: "clock")
+                Label(
+                    String(format: "%.1f ms", telemetry.latencyMs),
+                    systemImage: telemetry.isWithinLatencySLA ? "bolt.fill" : "clock.badge.exclamationmark"
+                )
+                .foregroundColor(telemetry.isWithinLatencySLA ? .green : .orange)
             }
             .font(.system(size: 11, weight: .semibold, design: .monospaced))
             .foregroundColor(.white)
@@ -217,6 +225,7 @@ public struct PerceptionDebugHUD: View {
             HStack(spacing: 8) {
                 Text(String(format: "Roll: %+.1f°", telemetry.rollDeg))
                 Text(String(format: "Pitch: %+.1f°", telemetry.pitchDeg))
+                Text("Subj: \(telemetry.subjectCount)")
             }
             .font(.system(size: 11, design: .monospaced))
             .foregroundColor(.white.opacity(0.8))
