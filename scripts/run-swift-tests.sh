@@ -59,11 +59,14 @@ if [[ "${OS_NAME}" == "Darwin" ]] && command -v swift >/dev/null 2>&1; then
 
     run_pkg_test "SyncKit" swift test --package-path "${SYNC_KIT_DIR}"
 
+    run_pkg_test "CameraApp (build)" swift build --package-path "${REPO_ROOT}/apple/CameraApp"
+    run_pkg_test "CameraAppClip (build)" swift build --package-path "${REPO_ROOT}/apple/CameraAppClip"
+
     echo "✓ All Swift package tests passed."
 else
     echo "==> Linux/Non-Darwin host. Running Swift structural & schema parity check..."
     echo "    NOTE: real linking (ComposeCore.xcframework) and real-engine execution"
-    echo "    (13 golden vectors via 'swift test') require macOS / a physical device."
+    echo "    (20 golden vectors via 'swift test') require macOS / a physical device."
     python3 "${REPO_ROOT}/scripts/validate-swift-parity.py"
     echo "✓ Swift package structure & golden parity validated."
 fi
