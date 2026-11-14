@@ -62,10 +62,8 @@ public final class BodyPoseAnalyzer: @unchecked Sendable {
                 y: Float(max(0.0, min(1.0, smoothedY))),
                 confidence: data.confidence
             )
+            // Store ONLY canonical PascalCase key
             processed[canonicalKey] = joint
-            if rawKey != canonicalKey {
-                processed[rawKey] = joint
-            }
         }
 
         // Synthesize Neck and Root if missing and shoulders/hips are available
@@ -96,86 +94,184 @@ public final class BodyPoseAnalyzer: @unchecked Sendable {
         return processed
     }
 
+    /// Infers subject facing classification ("Frontal", "ThreeQuarterLeft", "ThreeQuarterRight", "ProfileLeft", "ProfileRight").
+    public func inferFacing(from joints: [String: Joint]) -> String {
+        guard let nose = joints[JointType.Nose.rawValue],
+              let ls = joints[JointType.LeftShoulder.rawValue],
+              let rs = joints[JointType.RightShoulder.rawValue] else {
+            return "Frontal"
+        }
+        let shoulderMidX = (ls.x + rs.x) * 0.5
+        let shoulderWidth = abs(ls.x - rs.x)
+        guard shoulderWidth > 0.02 else { return "Frontal" }
+        let yaw = (nose.x - shoulderMidX) / shoulderWidth
+        let absYaw = abs(yaw)
+        if absYaw < 0.18 {
+            return "Frontal"
+        } else if absYaw <= 0.45 {
+            return yaw < 0.0 ? "ThreeQuarterLeft" : "ThreeQuarterRight"
+        } else {
+            return yaw < 0.0 ? "ProfileLeft" : "ProfileRight"
+        }
+    }
+
+    /// Infers shot type classification ("CloseUp", "HalfBody", "FullBody", "Environmental", "Unknown").
+    public func inferShotType(from joints: [String: Joint], bounds: NormalizedBox) -> String {
+        let hasAnkle = joints[JointType.LeftAnkle.rawValue] != nil || joints[JointType.RightAnkle.rawValue] != nil
+        if hasAnkle {
+            return "FullBody"
+        }
+        let hasHip = joints[JointType.LeftHip.rawValue] != nil || joints[JointType.RightHip.rawValue] != nil || joints[JointType.Root.rawValue] != nil
+        if hasHip {
+            return "HalfBody"
+        }
+        if bounds.height >= 0.70 {
+            return "FullBody"
+        } else if bounds.height >= 0.35 {
+            return "HalfBody"
+        } else if bounds.height >= 0.15 {
+            return "CloseUp"
+        } else if bounds.height > 0.0 {
+            return "Environmental"
+        }
+        return "Unknown"
+    }
+
+    /// Extrapolates subjects from face bounding boxes when skeletal body pose is unavailable.
+    public func subjectsFromFaceBoxes(_ faceBoxes: [NormalizedBox], confidence: Float = 0.8) -> [Subject] {
+        var subjects: [Subject] = []
+        for (idx, faceBox) in faceBoxes.enumerated() {
+            let topY = faceBox.y
+            let bottomY = min(1.0, faceBox.y + faceBox.height * 2.8)
+            let padW = faceBox.width * 0.5
+            let bounds = NormalizedBox(
+                min_x: max(0.0, faceBox.x - padW),
+                min_y: max(0.0, topY),
+                max_x: min(1.0, faceBox.x + faceBox.width + padW),
+                max_y: bottomY
+            )
+            subjects.append(
+                Subject(
+                    id: UInt32(idx + 1),
+                    bounds: bounds,
+                    joints: [:],
+                    facing: "Frontal",
+                    shot_type: "CloseUp",
+                    confidence: confidence
+                )
+            )
+        }
+        return subjects
+    }
+
     #if canImport(Vision) && canImport(CoreVideo) && canImport(ImageIO)
-    /// Runs `VNDetectHumanBodyPoseRequest` (and `VNDetectFaceRectanglesRequest` fallback) on a live pixel buffer.
+    /// Extracts subjects from VNHumanBodyPoseObservation array.
+    public func extractSubjects(
+        from observations: [VNHumanBodyPoseObservation],
+        timestamp: Double
+    ) -> [Subject] {
+        var subjects: [Subject] = []
+        for (idx, obs) in observations.enumerated() {
+            let recognized = (try? obs.recognizedPoints(.all)) ?? [:]
+            var rawMap: [String: (point: CGPoint, confidence: Float)] = [:]
+            var minX: Float = 1.0
+            var minY: Float = 1.0
+            var maxX: Float = 0.0
+            var maxY: Float = 0.0
+
+            for (key, pt) in recognized where pt.confidence >= minConfidence {
+                rawMap[key.rawValue.rawValue] = (point: pt.location, confidence: pt.confidence)
+                let nx = Float(pt.location.x)
+                let ny = Float(1.0 - pt.location.y)
+                minX = min(minX, nx)
+                minY = min(minY, ny)
+                maxX = max(maxX, nx)
+                maxY = max(maxY, ny)
+            }
+
+            let joints = processKeypoints(rawMap, timestamp: timestamp)
+            guard !joints.isEmpty else { continue }
+
+            let padX = max(0.04, (maxX - minX) * 0.15)
+            let padY = max(0.05, (maxY - minY) * 0.12)
+            let bounds = NormalizedBox(
+                min_x: max(0.0, minX - padX),
+                min_y: max(0.0, minY - padY),
+                max_x: min(1.0, maxX + padX),
+                max_y: min(1.0, maxY + padY)
+            )
+
+            let facing = inferFacing(from: joints)
+            let shotType = inferShotType(from: joints, bounds: bounds)
+
+            subjects.append(
+                Subject(
+                    id: UInt32(idx + 1),
+                    bounds: bounds,
+                    joints: joints,
+                    facing: facing,
+                    shot_type: shotType,
+                    confidence: obs.confidence
+                )
+            )
+        }
+        return subjects
+    }
+
+    /// Extracts normalized face bounding boxes from VNFaceObservation array.
+    public func extractFaceBoxes(from observations: [VNFaceObservation]) -> [NormalizedBox] {
+        var boxes: [NormalizedBox] = []
+        for face in observations {
+            let bb = face.boundingBox
+            let topY = Float(1.0 - bb.maxY)
+            let box = NormalizedBox(
+                x: Float(bb.minX),
+                y: topY,
+                width: Float(bb.width),
+                height: Float(bb.height)
+            )
+            boxes.append(box)
+        }
+        return boxes
+    }
+
+    /// Runs `VNDetectHumanBodyPoseRequest` on a live pixel buffer.
+    public func detectBodyPose(
+        in pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation = .right,
+        timestamp: Double
+    ) throws -> [Subject] {
+        let poseRequest = VNDetectHumanBodyPoseRequest()
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+        try handler.perform([poseRequest])
+        guard let obs = poseRequest.results, !obs.isEmpty else { return [] }
+        return extractSubjects(from: obs, timestamp: timestamp)
+    }
+
+    /// Runs `VNDetectFaceRectanglesRequest` on a live pixel buffer.
+    public func detectFaceRectangles(
+        in pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation = .right
+    ) throws -> [NormalizedBox] {
+        let faceRequest = VNDetectFaceRectanglesRequest()
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+        try handler.perform([faceRequest])
+        guard let faces = faceRequest.results, !faces.isEmpty else { return [] }
+        return extractFaceBoxes(from: faces)
+    }
+
+    /// Runs `VNDetectHumanBodyPoseRequest` (with `VNDetectFaceRectanglesRequest` fallback) on a live pixel buffer.
     public func analyzePixelBuffer(
         _ pixelBuffer: CVPixelBuffer,
         orientation: CGImagePropertyOrientation = .right,
         timestamp: Double
     ) throws -> [Subject] {
-        let poseRequest = VNDetectHumanBodyPoseRequest()
-        let faceRequest = VNDetectFaceRectanglesRequest()
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
-        try handler.perform([poseRequest, faceRequest])
-
-        var subjects: [Subject] = []
-        if let observations = poseRequest.results, !observations.isEmpty {
-            for (idx, obs) in observations.enumerated() {
-                let recognized = (try? obs.recognizedPoints(.all)) ?? [:]
-                var rawMap: [String: (point: CGPoint, confidence: Float)] = [:]
-                var minX: Float = 1.0
-                var minY: Float = 1.0
-                var maxX: Float = 0.0
-                var maxY: Float = 0.0
-
-                for (key, pt) in recognized where pt.confidence >= minConfidence {
-                    rawMap[key.rawValue.rawValue] = (point: pt.location, confidence: pt.confidence)
-                    let nx = Float(pt.location.x)
-                    let ny = Float(1.0 - pt.location.y)
-                    minX = min(minX, nx)
-                    minY = min(minY, ny)
-                    maxX = max(maxX, nx)
-                    maxY = max(maxY, ny)
-                }
-
-                let joints = processKeypoints(rawMap, timestamp: timestamp)
-                guard !joints.isEmpty else { continue }
-
-                let padX = max(0.04, (maxX - minX) * 0.15)
-                let padY = max(0.05, (maxY - minY) * 0.12)
-                let bounds = NormalizedBox(
-                    min_x: max(0.0, minX - padX),
-                    min_y: max(0.0, minY - padY),
-                    max_x: min(1.0, maxX + padX),
-                    max_y: min(1.0, maxY + padY)
-                )
-
-                subjects.append(
-                    Subject(
-                        id: UInt32(idx + 1),
-                        bounds: bounds,
-                        joints: joints,
-                        facing: "Frontal",
-                        shot_type: "Unknown",
-                        confidence: obs.confidence
-                    )
-                )
-            }
-        } else if let faces = faceRequest.results, !faces.isEmpty {
-            for (idx, face) in faces.enumerated() {
-                let bb = face.boundingBox
-                let topY = Float(1.0 - bb.maxY)
-                let bottomY = min(1.0, Float(1.0 - bb.minY) + Float(bb.height * 2.5))
-                let bounds = NormalizedBox(
-                    min_x: max(0.0, Float(bb.minX - bb.width * 0.5)),
-                    min_y: max(0.0, topY),
-                    max_x: min(1.0, Float(bb.maxX + bb.width * 0.5)),
-                    max_y: bottomY
-                )
-                subjects.append(
-                    Subject(
-                        id: UInt32(idx + 1),
-                        bounds: bounds,
-                        joints: [:],
-                        facing: "Frontal",
-                        shot_type: "CloseUp",
-                        confidence: face.confidence
-                    )
-                )
-            }
+        let subjects = try detectBodyPose(in: pixelBuffer, orientation: orientation, timestamp: timestamp)
+        if !subjects.isEmpty {
+            return subjects
         }
-
-        return subjects
+        let faceBoxes = try detectFaceRectangles(in: pixelBuffer, orientation: orientation)
+        return subjectsFromFaceBoxes(faceBoxes)
     }
     #endif
 

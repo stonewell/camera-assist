@@ -69,8 +69,8 @@ public final class AttitudeTracker: @unchecked Sendable {
         self.pitchFilter = OneEuroFilter(minCutoff: minCutoff, beta: beta, dCutoff: dCutoff)
     }
 
-    /// Process a 60Hz motion reading and return filtered Posture.
-    public func process(reading: MotionReading) -> Posture {
+    /// Computes raw, unfiltered Posture from a 60Hz motion reading without mutating filter state.
+    public func computeRawPosture(reading: MotionReading) -> Posture {
         let gx = reading.gravityX
         let gy = reading.gravityY
         let gz = max(-1.0, min(1.0, reading.gravityZ))
@@ -91,17 +91,46 @@ public final class AttitudeTracker: @unchecked Sendable {
             rawRoll = atan2(gy, gx) * 180.0 / .pi
         }
 
-        let filteredRoll = rollFilter.filter(rawRoll, timestamp: reading.timestamp)
-        let filteredPitch = pitchFilter.filter(rawPitch, timestamp: reading.timestamp)
         let isFlatish = abs(gz) > 0.85
+        return Posture(
+            roll_deg: Float(rawRoll),
+            pitch_deg: Float(rawPitch),
+            elevation_deg: Float(rawPitch),
+            angular_speed: Float(reading.angularSpeed),
+            is_flatish: isFlatish
+        )
+    }
+
+    /// Process a 60Hz motion reading and return filtered Posture.
+    public func process(reading: MotionReading) -> Posture {
+        let raw = computeRawPosture(reading: reading)
+
+        let filteredRoll = rollFilter.filter(Double(raw.roll_deg), timestamp: reading.timestamp)
+        let filteredPitch = pitchFilter.filter(Double(raw.pitch_deg), timestamp: reading.timestamp)
 
         return Posture(
             roll_deg: Float(filteredRoll),
             pitch_deg: Float(filteredPitch),
             elevation_deg: Float(filteredPitch),
-            angular_speed: Float(reading.angularSpeed),
-            is_flatish: isFlatish
+            angular_speed: raw.angular_speed,
+            is_flatish: raw.is_flatish
         )
+    }
+
+    /// Starts live 60Hz CoreMotion device-motion tracking across platforms.
+    public func startTracking(onReading: (@Sendable (MotionReading) -> Void)? = nil) {
+        #if canImport(CoreMotion) && !os(macOS)
+        if let callback = onReading {
+            startLiveMotionUpdates(onReading: callback)
+        }
+        #endif
+    }
+
+    /// Stops live CoreMotion device-motion tracking across platforms.
+    public func stopTracking() {
+        #if canImport(CoreMotion) && !os(macOS)
+        stopLiveMotionUpdates()
+        #endif
     }
 
     #if canImport(CoreMotion) && !os(macOS)

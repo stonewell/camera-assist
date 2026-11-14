@@ -29,8 +29,8 @@ public enum JointType: String, Sendable, CaseIterable, Codable {
             return exact
         }
         switch key {
-        case "nose": return .Nose
-        case "neck": return .Neck
+        case "nose", "head_joint": return .Nose
+        case "neck", "neck_1_joint": return .Neck
         case "root": return .Root
         case "lEye", "left_eye_joint": return .LeftEye
         case "rEye", "right_eye_joint": return .RightEye
@@ -202,7 +202,15 @@ public struct Subject: Sendable, Codable, Equatable {
     ) {
         self.id = id
         self.bounds = bounds
-        self.joints = joints
+        var canonicalJoints: [String: Joint] = [:]
+        for (k, v) in joints {
+            if let jt = JointType.from(key: k) {
+                var j = v
+                j.joint_type = jt
+                canonicalJoints[jt.rawValue] = j
+            }
+        }
+        self.joints = canonicalJoints
         self.facing = facing == "Front" ? "Frontal" : facing
         self.shot_type = shot_type
         self.confidence = confidence
@@ -279,7 +287,31 @@ public struct CameraIntrinsics: Sendable, Codable, Equatable {
         self.hfov_deg = hfov_deg
     }
 
+    public init(focalLengthMm: Float, hfovDeg: Float) {
+        self.init(focal_length_mm: focalLengthMm, hfov_deg: hfovDeg)
+    }
+
     public static let standardWide = CameraIntrinsics(focal_length_mm: 24.0, hfov_deg: 73.7)
+
+    /// Derives camera intrinsics supporting optional 3x3 pinhole intrinsic matrix HFOV derivation.
+    public static func from(
+        focalLengthMm: Float? = nil,
+        hfovDeg: Float? = nil,
+        intrinsicMatrix: [Float]? = nil,
+        imageWidth: Float? = nil
+    ) -> CameraIntrinsics {
+        if let hfov = hfovDeg {
+            return CameraIntrinsics(focal_length_mm: focalLengthMm ?? 24.0, hfov_deg: hfov)
+        }
+        if let matrix = intrinsicMatrix, matrix.count >= 9, let w = imageWidth, w > 0 {
+            let fx = matrix[0]
+            if fx > 0 {
+                let calculatedHfov = Float(2.0 * atan(Double(w) / (2.0 * Double(fx))) * 180.0 / .pi)
+                return CameraIntrinsics(focal_length_mm: focalLengthMm ?? 24.0, hfov_deg: calculatedHfov)
+            }
+        }
+        return CameraIntrinsics(focal_length_mm: focalLengthMm ?? 24.0, hfov_deg: 73.7)
+    }
 }
 
 /// Exposure metrics.
@@ -295,6 +327,230 @@ public struct ExposureSummary: Sendable, Codable, Equatable {
     }
 
     public static let daylight = ExposureSummary()
+
+    /// Computes EV100 from photographic parameters: `log2(N^2 / t) - log2(ISO / 100) + bias`.
+    public static func from(
+        iso: Float,
+        shutterSpeedSeconds: Float,
+        lensAperture: Float = 1.8,
+        exposureBias: Float = 0.0,
+        evOverride: Float? = nil
+    ) -> ExposureSummary {
+        if let ev = evOverride {
+            return ExposureSummary(iso: iso, shutter_speed_sec: shutterSpeedSeconds, ev: ev)
+        }
+        let n = Double(lensAperture > 0 ? lensAperture : 1.8)
+        let t = Double(shutterSpeedSeconds > 0 ? shutterSpeedSeconds : 1.0 / 500.0)
+        let isoVal = Double(iso > 0 ? iso : 100.0)
+        let ev100 = log2((n * n) / t) - log2(isoVal / 100.0) + Double(exposureBias)
+        return ExposureSummary(iso: iso, shutter_speed_sec: shutterSpeedSeconds, ev: Float(ev100))
+    }
+
+    public static func from(
+        iso: Float,
+        shutterSpeedSeconds: Double,
+        lensAperture: Float = 1.8,
+        exposureBias: Float = 0.0,
+        evOverride: Float? = nil
+    ) -> ExposureSummary {
+        self.from(
+            iso: iso,
+            shutterSpeedSeconds: Float(shutterSpeedSeconds),
+            lensAperture: lensAperture,
+            exposureBias: exposureBias,
+            evOverride: evOverride
+        )
+    }
+}
+
+/// Categorized primary lighting direction on the subject matching `compose-core::LightDirection`.
+public enum LightDirection: String, Sendable, Codable, Equatable {
+    case Front
+    case Side
+    case Backlit
+    case Top
+    case Overcast
+    case Indoor
+    case Unknown
+}
+
+/// Character and timing of ambient light matching `compose-core::LightQuality`.
+public enum LightQuality: String, Sendable, Codable, Equatable {
+    case Hard
+    case Soft
+    case GoldenHour
+    case BlueHour
+    case LowLight
+}
+
+/// Detailed frame luminance and backlight probe metrics.
+public struct LuminanceMetrics: Sendable, Codable, Equatable {
+    public var mean_luma: Float
+    public var face_to_bg_ratio: Float
+    public var highlight_clip_ratio: Float
+    public var shadow_crush_ratio: Float
+    public var is_backlit: Bool
+
+    public init(
+        mean_luma: Float = 0.5,
+        face_to_bg_ratio: Float = 1.0,
+        highlight_clip_ratio: Float = 0.0,
+        shadow_crush_ratio: Float = 0.0,
+        is_backlit: Bool = false
+    ) {
+        self.mean_luma = mean_luma
+        self.face_to_bg_ratio = face_to_bg_ratio
+        self.highlight_clip_ratio = highlight_clip_ratio
+        self.shadow_crush_ratio = shadow_crush_ratio
+        self.is_backlit = is_backlit
+    }
+}
+
+/// Fused lighting environment data matching `compose-core::LightContext`.
+public struct LightContext: Sendable, Codable, Equatable {
+    public var direction: LightDirection
+    public var quality: LightQuality
+    public var sun_azimuth_deg: Float?
+    public var sun_elevation_deg: Float?
+    public var face_to_bg_ratio: Float?
+    public var ev: Float
+    public var confidence: Float
+
+    public init(
+        direction: LightDirection = .Front,
+        quality: LightQuality = .Soft,
+        sun_azimuth_deg: Float? = nil,
+        sun_elevation_deg: Float? = nil,
+        face_to_bg_ratio: Float? = 1.0,
+        ev: Float = 12.0,
+        confidence: Float = 0.8
+    ) {
+        self.direction = direction
+        self.quality = quality
+        self.sun_azimuth_deg = sun_azimuth_deg
+        self.sun_elevation_deg = sun_elevation_deg
+        self.face_to_bg_ratio = face_to_bg_ratio
+        self.ev = ev
+        self.confidence = confidence
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(direction, forKey: .direction)
+        try container.encode(quality, forKey: .quality)
+        if let az = sun_azimuth_deg {
+            try container.encode(az, forKey: .sun_azimuth_deg)
+        } else {
+            try container.encodeNil(forKey: .sun_azimuth_deg)
+        }
+        if let el = sun_elevation_deg {
+            try container.encode(el, forKey: .sun_elevation_deg)
+        } else {
+            try container.encodeNil(forKey: .sun_elevation_deg)
+        }
+        if let ratio = face_to_bg_ratio {
+            try container.encode(ratio, forKey: .face_to_bg_ratio)
+        } else {
+            try container.encodeNil(forKey: .face_to_bg_ratio)
+        }
+        try container.encode(ev, forKey: .ev)
+        try container.encode(confidence, forKey: .confidence)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case direction
+        case quality
+        case sun_azimuth_deg
+        case sun_elevation_deg
+        case face_to_bg_ratio
+        case ev
+        case confidence
+    }
+
+    public func toJSONString() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(self)
+        guard let str = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "PerceptionKit", code: -1, userInfo: [NSLocalizedDescriptionKey: "UTF8 encoding failed"])
+        }
+        return str
+    }
+
+    public static func from(
+        exposure: ExposureSummary,
+        luminance: LuminanceMetrics? = nil,
+        sunAzimuthDeg: Float? = nil,
+        sunElevationDeg: Float? = nil,
+        cameraAzimuthDeg: Float? = nil,
+        confidence: Float = 0.85
+    ) -> LightContext {
+        let ev = exposure.ev
+
+        let direction: LightDirection
+        if let lum = luminance, lum.is_backlit || lum.face_to_bg_ratio < 0.45 {
+            direction = .Backlit
+        } else if let sunAz = sunAzimuthDeg, let camAz = cameraAzimuthDeg {
+            var deltaAz = abs(sunAz - camAz).truncatingRemainder(dividingBy: 360.0)
+            if deltaAz > 180.0 { deltaAz = 360.0 - deltaAz }
+            if let sunEl = sunElevationDeg, sunEl > 65.0 {
+                direction = .Top
+            } else if deltaAz < 45.0 {
+                direction = .Backlit
+            } else if deltaAz > 135.0 {
+                direction = .Front
+            } else {
+                direction = .Side
+            }
+        } else if ev < 7.0 {
+            direction = .Indoor
+        } else {
+            direction = .Front
+        }
+
+        let quality: LightQuality
+        if ev < 7.0 {
+            quality = .LowLight
+        } else if let sunEl = sunElevationDeg, sunEl >= 0.0 && sunEl <= 10.0 {
+            quality = .GoldenHour
+        } else if let sunEl = sunElevationDeg, sunEl < 0.0 && sunEl >= -6.0 {
+            quality = .BlueHour
+        } else if let lum = luminance, lum.highlight_clip_ratio > 0.05 {
+            quality = .Hard
+        } else {
+            quality = .Soft
+        }
+
+        return LightContext(
+            direction: direction,
+            quality: quality,
+            sun_azimuth_deg: sunAzimuthDeg,
+            sun_elevation_deg: sunElevationDeg,
+            face_to_bg_ratio: luminance?.face_to_bg_ratio,
+            ev: ev,
+            confidence: confidence
+        )
+    }
+}
+
+/// Unified perception bundle containing both geometric perception frame and lighting context.
+public struct PerceptionBundle: Sendable, Codable, Equatable {
+    public var frame: PerceptionFrame
+    public var light: LightContext
+    public var luminance: LuminanceMetrics?
+    public var alignmentErrorMs: Double
+
+    public init(
+        frame: PerceptionFrame,
+        light: LightContext = LightContext(),
+        luminance: LuminanceMetrics? = nil,
+        alignmentErrorMs: Double = 0.0
+    ) {
+        self.frame = frame
+        self.light = light
+        self.luminance = luminance
+        self.alignmentErrorMs = alignmentErrorMs
+    }
 }
 
 /// PerceptionFrame assembled by FrameSyncHub and consumed by `compose-core::Frame`.

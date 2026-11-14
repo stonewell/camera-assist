@@ -42,6 +42,43 @@ public enum MaskSummarizer {
         )
     }
 
+    /// Translates a MaskSummary across image shifts (dx, dy in normalized coordinates) for intermediate motion compensation.
+    public static func translate(
+        _ summary: MaskSummary,
+        dx: Float,
+        dy: Float,
+        edgeMargin: Float = 0.015
+    ) -> MaskSummary {
+        let newTopY = max(0.0, min(1.0, summary.top_y + dy))
+        let newBottomY = max(0.0, min(1.0, summary.bottom_y + dy))
+
+        func shiftCols(_ cols: [Float]) -> [Float] {
+            guard cols.count == 2 else { return [0.0, 0.0] }
+            let c0 = max(0.0, min(1.0, cols[0] + dx))
+            let c1 = max(0.0, min(1.0, cols[1] + dx))
+            return [min(c0, c1), max(c0, c1)]
+        }
+
+        let newHeadCols = shiftCols(summary.head_cols)
+        let newTorsoCols = shiftCols(summary.torso_cols)
+        let newLegCols = shiftCols(summary.leg_cols)
+
+        let overallMinX = min(newHeadCols[0], min(newTorsoCols[0], newLegCols[0]))
+        let overallMaxX = max(newHeadCols[1], max(newTorsoCols[1], newLegCols[1]))
+
+        return MaskSummary(
+            top_y: newTopY,
+            bottom_y: newBottomY,
+            head_cols: newHeadCols,
+            torso_cols: newTorsoCols,
+            leg_cols: newLegCols,
+            touches_top: newTopY <= edgeMargin,
+            touches_bottom: newBottomY >= (1.0 - edgeMargin),
+            touches_left: overallMinX <= edgeMargin,
+            touches_right: overallMaxX >= (1.0 - edgeMargin)
+        )
+    }
+
     /// Scans a downsampled 8-bit segmentation grid (e.g., 128x96) and computes `MaskSummary`
     /// including `top_y`, `bottom_y`, and horizontal column spans for head, torso, and leg bands.
     public static func summarizeMaskGrid(
@@ -122,21 +159,13 @@ public enum MaskSummarizer {
     }
 
     #if canImport(Vision) && canImport(CoreVideo) && canImport(ImageIO)
-    /// Runs `VNGeneratePersonSegmentationRequest` (.balanced) and summarizes the mask on a 128x96 sampling grid.
-    public static func analyzeSegmentation(
-        in pixelBuffer: CVPixelBuffer,
-        orientation: CGImagePropertyOrientation = .right,
+    /// Summarizes segmentation mask directly from a VNPixelBufferObservation (from VNGeneratePersonSegmentationRequest).
+    public static func summarizeObservation(
+        _ observation: VNPixelBufferObservation,
         threshold: UInt8 = 128,
         edgeMargin: Float = 0.015
-    ) throws -> MaskSummary? {
-        let request = VNGeneratePersonSegmentationRequest()
-        request.qualityLevel = .balanced
-        request.outputPixelFormat = kCVPixelFormatType_OneComponent8
-
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
-        try handler.perform([request])
-
-        guard let maskBuffer = request.results?.first?.pixelBuffer else { return nil }
+    ) -> MaskSummary? {
+        let maskBuffer = observation.pixelBuffer
         CVPixelBufferLockBaseAddress(maskBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(maskBuffer, .readOnly) }
 
@@ -166,6 +195,24 @@ public enum MaskSummarizer {
             threshold: threshold,
             edgeMargin: edgeMargin
         )
+    }
+
+    /// Runs `VNGeneratePersonSegmentationRequest` (.balanced) and summarizes the mask on a 128x96 sampling grid.
+    public static func analyzeSegmentation(
+        in pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation = .right,
+        threshold: UInt8 = 128,
+        edgeMargin: Float = 0.015
+    ) throws -> MaskSummary? {
+        let request = VNGeneratePersonSegmentationRequest()
+        request.qualityLevel = .balanced
+        request.outputPixelFormat = kCVPixelFormatType_OneComponent8
+
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+        try handler.perform([request])
+
+        guard let observation = request.results?.first else { return nil }
+        return summarizeObservation(observation, threshold: threshold, edgeMargin: edgeMargin)
     }
     #endif
 }
