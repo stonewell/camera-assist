@@ -16,6 +16,10 @@
     <string>1</string>
     <key>NSCameraUsageDescription</key>
     <string>需要相机权限以协助拍摄</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>需要相册权限以保存帮拍照片</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>需要相册权限以保存和预览帮拍照片</string>
     <key>NSAppClip</key>
     <dict>
         <key>NSAppClipRequestEphemeralUserNotification</key>

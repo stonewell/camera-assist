@@ -23,7 +23,12 @@ let package = Package(
                 .product(name: "SyncKit", package: "SyncKit")
             ],
             path: ".",
-            sources: ["AppClipStub.swift"]
+            sources: [
+                "AppClipStub.swift",
+                "AppClipInvocationParser.swift",
+                "AppClipCoordinator.swift",
+                "AppClipHelperView.swift"
+            ]
         ),
     ]
 )

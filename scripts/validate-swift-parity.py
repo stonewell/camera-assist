@@ -18,6 +18,7 @@ def main() -> int:
     capture_kit_dir = repo_root / "apple" / "Packages" / "CaptureKit"
     perception_kit_dir = repo_root / "apple" / "Packages" / "PerceptionKit"
     camera_app_dir = repo_root / "apple" / "CameraApp"
+    camera_clip_dir = repo_root / "apple" / "CameraAppClip"
     fixtures_dir = repo_root / "fixtures" / "golden"
 
     print("--- [validate-swift-parity] Checking Swift Package Declarations ---")
@@ -28,7 +29,8 @@ def main() -> int:
         sync_kit_dir / "Package.swift",
         capture_kit_dir / "Package.swift",
         perception_kit_dir / "Package.swift",
-        camera_app_dir / "Package.swift"
+        camera_app_dir / "Package.swift",
+        camera_clip_dir / "Package.swift"
     ]
 
     for pkg in packages:
@@ -631,6 +633,59 @@ def main() -> int:
                 return 1
     print(f"  ✓ shared/hints coverage verified for all {len(golden_vectors)} golden vectors in zh-Hans and en.")
     print("--- [validate-swift-parity] TASK-05 extended FFI contract parity gate passed. ---")
+
+    # 11. Check CameraAppClip Components & Stranger Helper Flow (TASK-11)
+    print("--- [validate-swift-parity] Checking CameraAppClip Stranger Helper Flow (TASK-11) ---")
+    clip_files = [
+        camera_clip_dir / "AppClipStub.swift",
+        camera_clip_dir / "AppClipInvocationParser.swift",
+        camera_clip_dir / "AppClipCoordinator.swift",
+        camera_clip_dir / "AppClipHelperView.swift",
+    ]
+    for fp in clip_files:
+        if not fp.is_file():
+            print(f"[FAIL] Missing CameraAppClip file: {fp}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Found CameraAppClip source: {fp.relative_to(repo_root)}")
+
+    # 11.1 Check CameraAppClip Info.plist permissions
+    clip_info_plist = camera_clip_dir / "Info.plist"
+    if not clip_info_plist.is_file():
+        print(f"[FAIL] Missing Info.plist in {camera_clip_dir}", file=sys.stderr)
+        return 1
+    info_content = clip_info_plist.read_text(encoding="utf-8")
+    for key in ["NSCameraUsageDescription", "NSPhotoLibraryAddUsageDescription", "NSPhotoLibraryUsageDescription", "NSAppClip"]:
+        if key not in info_content:
+            print(f"[FAIL] CameraAppClip Info.plist missing {key}", file=sys.stderr)
+            return 1
+    print("  ✓ CameraAppClip Info.plist verified with camera, photo library, and App Clip metadata.")
+
+    # 11.2 Check CameraAppClip key types and integration symbols
+    all_clip_text = ""
+    for fp in clip_files:
+        all_clip_text += "\n" + fp.read_text(encoding="utf-8")
+
+    expected_clip_symbols = [
+        "AppClipInvocationParser",
+        "AppClipCoordinator",
+        "AppClipHelperView",
+        "GhostSilhouetteOverlayView",
+        "TargetAlignmentOverlayView",
+        "AppClipCompletionView",
+        "NSUserActivityTypeBrowsingWeb",
+        "SyncSession",
+        "DefaultE2EECipher",
+        "ReferencePackage",
+        "CapturePackage",
+        "hasActiveInvocation",
+        "isSessionFinished"
+    ]
+    for sym in expected_clip_symbols:
+        if sym not in all_clip_text:
+            print(f"[FAIL] CameraAppClip sources missing required symbol: {sym}", file=sys.stderr)
+            return 1
+    print(f"  ✓ CameraAppClip verified with all {len(expected_clip_symbols)} expected TASK-11 symbols.")
+    print("--- [validate-swift-parity] TASK-11 App Clip stranger helper flow parity gate passed. ---")
     return 0
 
 
