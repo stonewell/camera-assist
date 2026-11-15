@@ -89,6 +89,9 @@ public struct CameraViewfinderScreen: View {
                 await coordinator.stop()
             }
         }
+        .onOpenURL { url in
+            _ = coordinator.handleDeepLink(url)
+        }
     }
 
     // MARK: - Top Navigation Bar
@@ -101,6 +104,16 @@ public struct CameraViewfinderScreen: View {
                 .foregroundColor(.white)
 
             Spacer()
+
+            // Voice prompter mute toggle
+            Button(action: { coordinator.toggleVoice() }) {
+                Image(systemName: coordinator.isVoiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(coordinator.isVoiceEnabled ? .yellow : .white.opacity(0.6))
+                    .padding(6)
+                    .background(Color.black.opacity(0.6))
+                    .clipShape(Circle())
+            }
 
             // Guidance HUD toggle
             Button(action: { coordinator.isUserGuidanceEnabled.toggle() }) {

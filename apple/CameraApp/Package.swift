@@ -34,7 +34,9 @@ let package = Package(
                 "CameraFeature/CameraCoordinator.swift",
                 "CameraFeature/CameraPreviewView.swift",
                 "CameraFeature/PerceptionDebugHUD.swift",
-                "CameraFeature/UserGuidanceHUD.swift"
+                "CameraFeature/UserGuidanceHUD.swift",
+                "CameraFeature/VoicePrompter.swift",
+                "CameraFeature/CameraControlWidget.swift"
             ]
         ),
     ]

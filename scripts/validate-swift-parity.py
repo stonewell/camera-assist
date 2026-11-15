@@ -197,6 +197,8 @@ def main() -> int:
         camera_app_dir / "CameraFeature" / "CameraPreviewView.swift",
         camera_app_dir / "CameraFeature" / "PerceptionDebugHUD.swift",
         camera_app_dir / "CameraFeature" / "UserGuidanceHUD.swift",
+        camera_app_dir / "CameraFeature" / "VoicePrompter.swift",
+        camera_app_dir / "CameraFeature" / "CameraControlWidget.swift",
     ]
     for fp in camera_app_files:
         if not fp.is_file():
@@ -686,6 +688,135 @@ def main() -> int:
             return 1
     print(f"  ✓ CameraAppClip verified with all {len(expected_clip_symbols)} expected TASK-11 symbols.")
     print("--- [validate-swift-parity] TASK-11 App Clip stranger helper flow parity gate passed. ---")
+
+    # 12. Check VoicePrompter & iOS 18 ControlWidget (TASK-12)
+    print("--- [validate-swift-parity] Checking VoicePrompter & iOS 18 ControlWidget (TASK-12) ---")
+    voice_prompter_file = camera_app_dir / "CameraFeature" / "VoicePrompter.swift"
+    widget_file = camera_app_dir / "CameraFeature" / "CameraControlWidget.swift"
+    app_manifest_file = camera_app_dir / "Package.swift"
+
+    # 12.1 Check file existence
+    for fp in [voice_prompter_file, widget_file]:
+        if not fp.is_file():
+            print(f"[FAIL] Missing CameraApp file: {fp}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Found source file: {fp.relative_to(repo_root)}")
+
+    # 12.2 Check CameraApp Package.swift sources list includes both files
+    app_manifest_text = app_manifest_file.read_text(encoding="utf-8")
+    for src in ["CameraFeature/VoicePrompter.swift", "CameraFeature/CameraControlWidget.swift"]:
+        if src not in app_manifest_text:
+            print(f"[FAIL] CameraApp/Package.swift sources missing: {src}", file=sys.stderr)
+            return 1
+    print("  ✓ CameraApp/Package.swift explicitly lists VoicePrompter.swift and CameraControlWidget.swift.")
+
+    # 12.3 Check VoicePrompter types and requirements
+    vp_text = voice_prompter_file.read_text(encoding="utf-8")
+    vp_required_tokens = [
+        "VoicePrompterConfig",
+        "minIntervalSec",
+        "sameHintCooldownSec",
+        "repeatAfterSec",
+        "maxRepeats",
+        "captureQuietWindowSec",
+        "VoiceSuppressionReason",
+        "muted",
+        "voiceOverActive",
+        "shutterQuietWindow",
+        "emptyHint",
+        "duplicateGood",
+        "sameHintCooldown",
+        "minIntervalCooldown",
+        "maxRepeatsReached",
+        "VoicePromptDecision",
+        "spoken(",
+        "spokenInterrupted(",
+        "suppressed(",
+        "VoiceUtteranceRecord",
+        "class VoicePrompter",
+        "AVSpeechSynthesizer",
+        "AVSpeechUtterance",
+        "chineseSpokenTable",
+        "englishSpokenTable",
+        "notifyCaptureStarted",
+        "notifyCaptureEnded",
+        "stopSpeakingImmediate",
+        "evaluateAndSpeak",
+    ]
+    for token in vp_required_tokens:
+        if token not in vp_text:
+            print(f"[FAIL] VoicePrompter.swift missing required token: {token}", file=sys.stderr)
+            return 1
+    print(f"  ✓ VoicePrompter.swift verified with all {len(vp_required_tokens)} required speech and suppression tokens.")
+
+    # 12.4 Check all 21 hint keys covered in VoicePrompter spoken tables
+    for key in zh_hints.keys():
+        if f'"{key}":' not in vp_text:
+            print(f"[FAIL] VoicePrompter.swift missing spoken table entry for hint key: {key}", file=sys.stderr)
+            return 1
+    print(f"  ✓ VoicePrompter.swift spoken tables verify complete coverage of all 21 standard hint keys.")
+
+    # 12.5 Check CameraControlWidget types and iOS 18 ControlWidget tokens
+    widget_text = widget_file.read_text(encoding="utf-8")
+    widget_required_tokens = [
+        "cameraAssistQuickLaunchRequested",
+        "CameraLaunchMode",
+        "live",
+        "normal",
+        "stranger",
+        "CameraQuickLaunchRequest",
+        "launchURL",
+        "parse(url:",
+        "CameraControlWidgetDescriptor",
+        "OpenCameraAssistIntent",
+        "AppIntent",
+        "CameraAssistControlWidget",
+        "ControlWidget",
+        "StaticControlConfiguration",
+        "ControlWidgetButton",
+    ]
+    for token in widget_required_tokens:
+        if token not in widget_text:
+            print(f"[FAIL] CameraControlWidget.swift missing required token: {token}", file=sys.stderr)
+            return 1
+    print(f"  ✓ CameraControlWidget.swift verified with all {len(widget_required_tokens)} ControlWidget and Intent tokens.")
+
+    # 12.6 Check CameraCoordinator wiring for voice prompter and deep linking
+    coord_text = (camera_app_dir / "CameraFeature" / "CameraCoordinator.swift").read_text(encoding="utf-8")
+    coord_voice_tokens = [
+        "voicePrompter",
+        "isVoiceEnabled",
+        "toggleVoice",
+        "setVoiceEnabled",
+        "handleDeepLink",
+        "applyQuickLaunchRequest",
+        "lastQuickLaunchRequest",
+        "cameraAssistQuickLaunchRequested",
+        "notifyCaptureStarted",
+        "notifyCaptureEnded",
+        "evaluateAndSpeak",
+    ]
+    for token in coord_voice_tokens:
+        if token not in coord_text:
+            print(f"[FAIL] CameraCoordinator.swift missing required voice/quick-launch wiring token: {token}", file=sys.stderr)
+            return 1
+    print(f"  ✓ CameraCoordinator.swift verified with all {len(coord_voice_tokens)} VoicePrompter and QuickLaunch tokens.")
+
+    # 12.7 Check CameraApp.swift wiring
+    app_swift_text = (camera_app_dir / "CameraApp.swift").read_text(encoding="utf-8")
+    app_voice_tokens = [
+        "onOpenURL",
+        "handleDeepLink",
+        "toggleVoice",
+        "isVoiceEnabled",
+        "speaker.wave.2.fill",
+    ]
+    for token in app_voice_tokens:
+        if token not in app_swift_text:
+            print(f"[FAIL] CameraApp.swift missing required voice UI token: {token}", file=sys.stderr)
+            return 1
+    print("  ✓ CameraApp.swift verified with onOpenURL and speaker mute toggle.")
+    print("--- [validate-swift-parity] TASK-12 VoicePrompter & ControlWidget parity gate passed. ---")
     return 0
 
 

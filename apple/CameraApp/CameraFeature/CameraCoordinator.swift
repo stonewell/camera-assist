@@ -93,6 +93,10 @@ public final class CameraCoordinator: ObservableObject {
 
     public let hintResolver: HintCatalogResolver = .shared
     public let hapticEngine: GuidanceHapticEngine = GuidanceHapticEngine()
+    public let voicePrompter: VoicePrompter
+
+    @Published public var isVoiceEnabled: Bool = true
+    @Published public var lastQuickLaunchRequest: CameraQuickLaunchRequest? = nil
 
     @Published public var telemetry: DebugTelemetry = DebugTelemetry()
     @Published public var renderJoints: [String: RenderJoint] = [:]
@@ -115,6 +119,7 @@ public final class CameraCoordinator: ObservableObject {
 
     private var isProcessingFrame: Bool = false
     private var latestProcessedTimestamp: Double = -.infinity
+    private nonisolated(unsafe) var quickLaunchObserver: (any NSObjectProtocol)? = nil
 
     public init(
         sessionManager: CaptureSessionManager = CaptureSessionManager(),
@@ -124,11 +129,14 @@ public final class CameraCoordinator: ObservableObject {
         perceptionScheduler: PerceptionScheduler = PerceptionScheduler(),
         bodyPoseAnalyzer: BodyPoseAnalyzer = BodyPoseAnalyzer(),
         visionProcessor: VisionFrameProcessor? = nil,
-        composer: LiveComposer? = nil
+        composer: LiveComposer? = nil,
+        voicePrompter: VoicePrompter = VoicePrompter()
     ) {
         self.sessionManager = sessionManager
         self.photoController = photoController
         self.attitudeTracker = attitudeTracker
+        self.voicePrompter = voicePrompter
+        self.isVoiceEnabled = voicePrompter.isEnabled
 
         let resolvedSyncHub = syncHub ?? FrameSyncHub(attitudeTracker: attitudeTracker)
         self.syncHub = resolvedSyncHub
@@ -155,6 +163,68 @@ public final class CameraCoordinator: ObservableObject {
 
         setupFramePipeline()
         setupRotationBridge()
+        setupQuickLaunchObserver()
+    }
+
+    deinit {
+        if let observer = quickLaunchObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func setupQuickLaunchObserver() {
+        self.quickLaunchObserver = NotificationCenter.default.addObserver(
+            forName: .cameraAssistQuickLaunchRequested,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let req = (notification.userInfo?["request"] as? CameraQuickLaunchRequest)
+                ?? (notification.object as? CameraQuickLaunchRequest)
+            guard let req else { return }
+            Task { @MainActor [weak self] in
+                self?.applyQuickLaunchRequest(req)
+            }
+        }
+    }
+
+    /// Toggles voice prompt speech guidance.
+    public func toggleVoice() {
+        isVoiceEnabled.toggle()
+        voicePrompter.isEnabled = isVoiceEnabled
+    }
+
+    /// Sets explicit voice prompt speech enabled/disabled state.
+    public func setVoiceEnabled(_ enabled: Bool) {
+        isVoiceEnabled = enabled
+        voicePrompter.isEnabled = enabled
+    }
+
+    /// Handles deep link URLs (e.g. `camera-assist://launch?mode=live`).
+    @discardableResult
+    public func handleDeepLink(_ url: URL) -> Bool {
+        guard let request = CameraQuickLaunchRequest.parse(url: url) else { return false }
+        applyQuickLaunchRequest(request)
+        return true
+    }
+
+    /// Applies incoming quick launch request configurations (mode, zoom preset).
+    public func applyQuickLaunchRequest(_ request: CameraQuickLaunchRequest) {
+        self.lastQuickLaunchRequest = request
+
+        if let zoomStr = request.zoomPreset, let preset = CameraZoomPreset(rawValue: zoomStr) {
+            Task {
+                await self.selectZoomPreset(preset)
+            }
+        }
+
+        switch request.mode {
+        case .live:
+            self.isUserGuidanceEnabled = true
+        case .normal:
+            self.isUserGuidanceEnabled = false
+        case .stranger:
+            self.isUserGuidanceEnabled = true
+        }
     }
 
     private func setupRotationBridge() {
@@ -189,6 +259,7 @@ public final class CameraCoordinator: ObservableObject {
 
     /// Stops motion tracking and the capture session.
     public func stop() async {
+        voicePrompter.stopSpeakingImmediate()
         attitudeTracker.stopTracking()
         await sessionManager.stopSession()
         self.isSessionRunning = sessionManager.isRunning
@@ -227,7 +298,11 @@ public final class CameraCoordinator: ObservableObject {
     public func capturePhoto() async -> PhotoCaptureResult? {
         guard !isCapturing else { return nil }
         self.isCapturing = true
-        defer { self.isCapturing = false }
+        voicePrompter.notifyCaptureStarted()
+        defer {
+            self.isCapturing = false
+            voicePrompter.notifyCaptureEnded()
+        }
 
         #if canImport(Photos)
         if PHPhotoLibrary.authorizationStatus(for: .addOnly) == .notDetermined {
@@ -389,6 +464,12 @@ public final class CameraCoordinator: ObservableObject {
             rollDeg: Double(bundle.frame.posture.roll_deg),
             pitchDeg: Double(bundle.frame.posture.pitch_deg),
             isFlatish: bundle.frame.posture.is_flatish
+        )
+
+        _ = voicePrompter.evaluateAndSpeak(
+            output: resolvedOutput,
+            isCapturingPhoto: isCapturing,
+            timestamp: CFAbsoluteTimeGetCurrent()
         )
 
         self.telemetry = DebugTelemetry(
