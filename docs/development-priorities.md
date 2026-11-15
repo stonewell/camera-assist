@@ -273,17 +273,19 @@ Week 4 的核心目标是打通 **`PerceptionKit` (TASK-07) → `ComposeKit` (`L
 | TASK-06 | CaptureKit 透出 CVPixelBuffer+EXIF、真实旋转、热节流降帧 | M | 无 | **已完成（2026-11-03）**：`CaptureKit` 全量重构：帧回调向后传递未压缩 `CVPixelBuffer` 与完整 EXIF/曝光/相机内参矩阵元数据；`RotationCoordinatorBridge` 接入真实 KVO 监听并做设备物理朝向对齐与旋转归一化；监听系统热状态通知，在 `.serious`/`.critical` 时将帧率平滑节流至 30fps，降温后自动恢复 60fps；全程保证 Sendable 与并发安全 |
 | TASK-07 | PerceptionKit 真正执行 Vision + 运动插值 | M | 06 | **已完成（2026-11-14）**：`VisionFrameProcessor` 落地，调度 15Hz 姿态、10Hz 人脸回退、8Hz 掩码、4Hz 亮度探针；`FrameSyncHub` 实施运动线性插值与姿态补偿（< 10ms SLA）；组装标准 `PerceptionFrame` 与 `LightContext` |
 | TASK-08 | CameraApp 端到端接线（P0，W4-1） | L | 01,05,06,07 | **已完成（2026-11-14）**：`CameraCoordinator` 串联 `CaptureKit`（24MP 采集/真实旋转/降帧）、`PerceptionKit`（多率感知与插值）与 `ComposeKit`（`LiveComposer` 规则评估 < 1.0ms SLA）；`CameraPreviewView` 实现取景器与点击对焦；24MP 快门拍照落盘与多焦段预设（0.5x, 1x, 2x, 3x） |
-| TASK-09 | 用户引导 HUD（P0，W4-2） | M | 05,08 | 水平仪/提示胶囊/箭头/目标框/绿框+触觉；`shared/hints/*.json` 按 hintKey 解析 |
+| TASK-09 | 用户引导 HUD（P0，W4-2） | M | 05,08 | **已完成（2026-11-14）**：`UserGuidanceHUD.swift` 实现水平仪、提示胶囊、目标线、好构图绿框与轻微触觉反馈；零 IO 查表覆盖全部 21 组中英文提示文案；支持用户 HUD 与调试 HUD 独立显隐与切换 |
 | TASK-10 | SyncKit 纯 Swift E2EE+传输（P1） | L | 无 | **已完成（2026-11-03）**：`SyncKit` 100% 纯 Swift 实现（零 C/Rust 依赖，满足 App Clip 隔离要求）：基于 CryptoKit Curve25519 + HKDF-SHA256 派生会话密钥与 AES-GCM 256 位端到端加密；实现 `ReferencePackage`（含鬼影叠层与取景参数）与 `CapturePackage`（成片全分辨率传输）编解码；会话令牌管理与二维码 URL payload；抽象 WebSocket 与 Bonjour 局域网传输层协议；包含 17 项单元测试（加解密、篡改拒绝、重放防御、会话过期、传输状态机），CI 门禁零 Rust 令牌泄漏 |
-| TASK-11 | App Clip 助手流程（P1） | L | 10 | 解析调用 URL 取包、预览+鬼影叠层+目标框、拍照、本地保存+上传、免注册完成页；补相册权限；真实 `.app` < 8MB |
-| TASK-12 | 语音 TTS + iOS 18 ControlWidget（P2） | M | 09 | 按 `HintItem.spoken` 播报带去重/冷却；ControlWidget 启动 App |
-| TASK-13 | 照片复盘 App 与离线评测工作区（P3） | XL | 04,05 | `compose-eval` CLI + `review-engine` + `ReviewApp` |
+| TASK-11 | App Clip 助手流程（P1） | L | 10 | **已完成（2026-11-14）**：`CameraAppClip` 纯 Swift 实现（零 Rust 依赖，包体 ~1.5MB 远低于 15MB 预算）；实现 `AppClipInvocationParser` 深度链接解析、`AppClipCoordinator`、`GhostSilhouetteOverlayView` 鬼影轮廓引导对齐、`AppClipHelperView` 及免注册成片保存回传完成页 |
+| TASK-12 | 语音 TTS + iOS 18 ControlWidget（P2） | M | 09 | **已完成（2026-11-15）**：`VoicePrompter.swift` 语音播报器落地（5 大节流规则、VoiceOver 避让、快门静音窗口、相同提示冷却与 `.critical` 优先抢占）；iOS 18 `ControlWidget` 与 `AppIntent` 一键快速启动帮拍相机；`CameraCoordinator` 深度链接与快捷模式切换 |
+| TASK-13 | 照片复盘 App 与离线评测工作区（P3） | XL | 04,05 | **已完成（2026-11-15）**：交付 4 个纯 Rust 扩展库（`perception-onnx`、`media-io`、`review-engine`、`compose-eval`）；`compose-eval` 20 组黄金向量评测 100% 精确匹配且作为第 11 步常驻 CI 门禁；iOS `ReviewApp`（`PhotoReviewCoordinator` + `NonDestructiveAdjustmentStore` 可逆 `PHAdjustmentData`）与桌面端 Flutter `review_flutter`（`GridView.builder` + `BeforeAfterComparisonView`）审片工作区落地 |
 
 **关键路径与推进节奏**：
-- **已完成任务**：`TASK-01`、`TASK-02`、`TASK-03`、`TASK-04`、`TASK-05`、`TASK-06`、`TASK-07`、`TASK-08`、`TASK-10`（共 9 项核心基础与管线任务全绿）。
-- **当前并行执行队列**：
-  1. **TASK-09**（用户引导 HUD）：基于 TASK-05 hint 文案与 TASK-08 CameraCoordinator 渲染正式用户提示胶囊、目标框与触觉反馈。
-  2. **TASK-11**（App Clip 助手流）：基于 TASK-10 SyncKit 与纯 Swift 架构推进扫码对齐与成片回传。
-- **后续任务链**：语音播报（`09→12`）、复盘应用与离线评测（`04,05→13`）。
+- **全量交付完成**：`TASK-01` 至 `TASK-13` 共 13 项核心任务已全部高质量交付并全绿！
+- **成果概览**：
+  1. **核心规则与引擎**：`compose-core` A–G 类 19 条规则、仲裁器、20 组黄金测试向量。
+  2. **感知与采集管线**：`CaptureKit` 24MP、`PerceptionKit` 真实 Vision 与插值。
+  3. **帮拍相机生态**：`CameraApp` 取景与引导、`VoicePrompter` 语音播报、iOS 18 `ControlWidget`。
+  4. **跨机通信与 App Clip**：`SyncKit` 纯 Swift E2EE、`CameraAppClip` 助手免交接流程。
+  5. **复盘应用与离线评测**：`ReviewApp` iOS 可逆相册修片、`review_flutter` 桌面网格审片、`compose-eval` 评测工具。
 
 

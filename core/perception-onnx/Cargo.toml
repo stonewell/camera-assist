@@ -1,0 +1,16 @@
+[package]
+name = "perception-onnx"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "ONNX-compatible desktop perception interface and synthetic COCO-17 to 19-joint model converter"
+
+[dependencies]
+compose-core = { path = "../compose-core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

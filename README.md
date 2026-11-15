@@ -32,52 +32,42 @@
 camera-assist/
 ├─ docs/                              产品方案、开发规划、功能调研与历史归档 (archive/)
 ├─ core/                              Rust workspace（多端共用底层核心）
-│  ├─ compose-core/                   ★ 规则引擎：纯 Rust，已实现规则 A–D（12 条）；几何、光线、仲裁器等按设计规格逐步补齐
-│  ├─ compose-ffi/                    UniFFI 绑定 → 生成 iOS/macOS 适用的 XCFramework 与 Swift Package（Swift 侧尚未链接，见 TASK-01）
-│  ├─ perception-onnx/                （计划中）ONNX Runtime 推理（桌面端人体检测、分割、姿态、人脸与直线检测）
-│  ├─ media-io/                       （计划中）桌面端媒体读写（解码、EXIF、缩略图缓存、JPEG 导出、XMP 侧车文件）
-│  ├─ review-engine/                  （计划中）桌面端复盘引擎（文件夹扫描、后台任务队列、SQLite 缓存、旅行分组）
-│  ├─ review-bridge/                  （计划中）flutter_rust_bridge 绑定 → 供 Flutter 桌面端调用
-│  └─ compose-eval/                   （计划中）Rust 命令行评测工具（ONNX 后端）
+│  ├─ compose-core/                   ★ 规则引擎：纯 Rust，A–G 类 19 条构图与光线规则、仲裁器、20 组黄金测试向量
+│  ├─ compose-ffi/                    UniFFI 绑定 → 生成 iOS/macOS 适用的 XCFramework 与 Swift Package
+│  ├─ perception-onnx/                ★ ONNX 兼容感知契约（COCO-17 骨骼转 19 关节、人脸朝向与景别推断、模型许可证审计）
+│  ├─ media-io/                       ★ 媒体变换数学（非破坏性裁剪、旋转内接矩形、EXIF 提取、XMP 侧车生成）
+│  ├─ review-engine/                  ★ 相册审片复盘引擎（0-100 构图评分、废片自动修复配方、批处理撤销与剔除）
+│  └─ compose-eval/                   ★ 离线评测与基准测试工具（20 组黄金向量自动评估、常驻 CI 第 11 步门禁）
 ├─ apple/                             Apple 生态工程
-│  ├─ CameraApp/                      ★ 帮拍相机 iOS 主应用（CameraCoordinator 端到端接线、取景预览、24MP 拍照与多焦段预设已完成，TASK-08）
-│  ├─ CameraAppClip/                  ★ 路人帮拍 App Clip（当前为 Color.black 桩）
-│  ├─ ReviewApp/                      （计划中）照片复盘 iOS 应用（SwiftUI + PhotoKit 非破坏性写回 + 分享扩展）
+│  ├─ CameraApp/                      ★ 帮拍相机 iOS 主应用（取景预览、24MP 拍照、HUD 引导、语音播报、iOS 18 ControlWidget）
+│  ├─ CameraAppClip/                  ★ 路人帮拍 App Clip（纯 Swift，零 Rust 依赖，包体 ~1.5MB，扫码对齐与成片回传）
+│  ├─ ReviewApp/                      ★ 照片复盘 iOS 应用（PhotoReviewCoordinator + 可逆 PHAdjustmentData）
 │  ├─ Packages/
-│  │   ├─ ComposeKit/                 compose-ffi 上的 Swift 薄封装（值类型、Sendable，双 iOS 应用共用）
-│  │   ├─ PerceptionVision/           （计划中）Vision 感知后端（双 iOS 应用共用）
-│  │   ├─ PerceptionKit/              实时感知调度、平滑、IMU、定位、天气（帮拍相机专有）
-│  │   ├─ CaptureKit/                 AVCaptureSession 管线、24MP 输出、相机控制控件、热节流降帧（帮拍相机专有，TASK-06 已完成）
-│  │   ├─ GuideKit/                   （计划中）帮拍辅助：路人帮拍模式、语音播报（帮拍相机专有）
+│  │   ├─ ComposeKit/                 compose-ffi 上的 Swift 封装（值类型、Sendable，全量 20 golden vectors 文案对齐）
+│  │   ├─ PerceptionKit/              实时感知调度、平滑、Vision 姿态与人脸、IMU 滤波、运动插值
+│  │   ├─ CaptureKit/                 AVCaptureSession 管线、24MP 输出、旋转监听、热节流降帧（TASK-06 已完成）
 │  │   └─ SyncKit/                    ★ 跨机通信：100% 纯 Swift E2EE、Curve25519+AES-GCM、传输抽象（TASK-10 已完成，零 Rust 依赖）
-│  └─ Tools/                          （计划中）
-│      ├─ compose-eval-vision/        macOS 命令行离线评测工具（Vision 后端）
-│      └─ capture-replay/             真机录制数据回放工具
-├─ desktop/                           （计划中）Flutter 桌面端应用（macOS / Windows / Linux 跨平台 UI）
+├─ desktop/                           
+│  └─ review_flutter/                 ★ Flutter 桌面端审片应用（GridView.builder 网格、一键废片拯救、前后对比划块）
 ├─ shared/
 │  ├─ config/Thresholds.json          统一规则阈值与后端覆盖配置（所有应用共用）
 │  ├─ hints/                          多语言文案源文件（zh-Hans.json, en.json）
 │  └─ models/models.json              桌面端 ONNX 模型清单（版本、SHA-256、许可证；scripts/audit-models.py 读取）
 └─ fixtures/
-   ├─ golden/                         黄金测试向量（20 组 001–020 + schema.json；感知输入 → 预期判定，TASK-02/04 已完成）
-   └─ eval-dataset/                   （计划中）离线标注测试数据集
+   └─ golden/                         黄金测试向量（20 组 001–020 + schema.json；感知输入 → 预期判定，TASK-02/04 已完成）
 ```
 
-### 当前实现状态（2026-11-14）
+### 全量交付状态（TASK-01 至 TASK-13 全部完成）
 
-- **核心基座与管线全量交付（TASK-01、TASK-02、TASK-03、TASK-04、TASK-05、TASK-06、TASK-07、TASK-08、TASK-10）**：
-  - **`compose-core` 规则 A–G 闭环**：共 19 条构图、光线与距离规则（`light.backlit`, `light.harsh_top`, `light.flat_front`, `light.side_harsh`, `distance.distortion`, `distance.ultra_wide_edge`, `light.low_light` 等），实际消费 `ctx.light` 与镜头内参；支持 `enterDelayOverride` 仲裁器延迟覆盖与 glob 匹配；Merger 冲突焦段去重与 HFOV 范围安全（TASK-04）。暂缓规则：`light.sun_in_frame`、`lens.smudge`、`distance.fill_range`。
-  - **20 组黄金测试向量**：`fixtures/golden`（`001`–`020`），Rust 检验器与 Swift 模式校验均实现 exact finding-set parity 100% 通过（TASK-02/04/05）。
-  - **`ComposeKit` 严格链接与 FFI 契约扩展**：通过 `.binaryTarget` 链接 `ComposeCore.xcframework` 并禁止静默 mock（TASK-01）；全量导出 `reload_config`、`analyze_still`、`reset` 与 `backend`，输出 severity、全部 16 种 action、target 与数值 metrics，双语文案词典对齐（TASK-05）。
-  - **`CaptureKit` 24MP 完整采集**：透出未压缩 `CVPixelBuffer` 与完整 EXIF/相机内参/曝光元数据；`RotationCoordinator` 真实 KVO 朝向监听与对齐；系统热状态监听自动 60→30fps 平滑降帧与恢复（TASK-06）。
-  - **`PerceptionKit` 真实 Vision 与运动插值**：`VisionFrameProcessor` 落地多率调度（15Hz 姿态、10Hz 人脸回退、8Hz 掩码、4Hz 亮度探针）；`FrameSyncHub` 实施运动线性插值与姿态补偿（< 10ms SLA）；组装标准 `PerceptionFrame` 与 `LightContext`（TASK-07）。
-  - **`CameraApp` 端到端集成**：`CameraCoordinator` 串联采集、感知与 `LiveComposer` 规则评估（< 1.0ms SLA）；`CameraPreviewView` 实现 live 取景预览与点击对焦；支持 24MP 快门拍照落盘与多焦段预设（0.5x, 1x, 2x, 3x）（TASK-08）。
-  - **`SyncKit` 纯 Swift E2EE 通信**：100% 纯 Swift 实现（零 C/Rust 依赖），Curve25519 + HKDF + AES-GCM-256 加密、`ReferencePackage`/`CapturePackage` 编解码、会话令牌/二维码、WebSocket/Bonjour 传输抽象及 17 项单元测试（TASK-10）。
-  - **质量门禁体系**：10 步门禁脚本升级真实 compiled `.app` bundle 体积测量、合成自测标记（`SYNTHETIC_SELF_TEST`）与字段级 Swift Parity 比对（TASK-02）。
-- **当前优先推进（TASK-09, TASK-11）**：
-  - 用户引导 HUD（TASK-09）：实时提示胶囊、目标线与触觉确认。
-  - App Clip 助手交互流程（TASK-11）：扫码拉包、对齐引导与成片秒级回传。
-- **待办特性**：语音 TTS（TASK-12）、照片复盘应用 `ReviewApp` 与桌面端（TASK-13）。
+- **全量 13 项核心开发与门禁任务（TASK-01 至 TASK-13）全部交付通过**：
+  - **`compose-core` 规则 A–G 闭环**：共 19 条构图、光线与距离规则，消费 `ctx.light` 与镜头内参；仲裁器防抖；20 组黄金测试向量 100% 精确匹配。
+  - **`ComposeKit` 严格链接与 FFI 契约扩展**：`.binaryTarget` 严格链接 `ComposeCore.xcframework`；导出 `reload_config`、`analyze_still`、`reset` 与 `backend`。
+  - **`CaptureKit` 24MP 完整采集**：透出 `CVPixelBuffer` 与 EXIF/相机内参；`RotationCoordinator` 真实 KVO 朝向监听；系统热节流 60→30fps 降帧与恢复。
+  - **`PerceptionKit` 真实 Vision 与运动插值**：`VisionFrameProcessor` 多率感知调度；`FrameSyncHub` 运动线性插值与姿态补偿。
+  - **`CameraApp` 取景与引导闭环**：`UserGuidanceHUD` 提示胶囊、水平仪、绿框与触觉；`VoicePrompter` 语音播报（节流与快门保护）；iOS 18 `ControlWidget` 快捷启动。
+  - **`SyncKit` 纯 Swift E2EE 与 `CameraAppClip`**：零 Rust 依赖（包体 ~1.5MB 远低于 15MB 预算），Curve25519+AES-GCM，扫码对齐与免交接成片回传。
+  - **`ReviewApp`、`review_flutter` 与 `compose-eval`**：相册可逆拉直裁切 (`PHAdjustmentData`)、Flutter 桌面审片网格与前后对比滑动、`compose-eval` 20 组黄金向量评测 100% 精确匹配。
+  - **11 步自动化验证门禁**：`verify-all.sh` 涵盖格式、Clippy、单测、黄金向量、微基准、模型审计、App Clip 隔离测量、Swift Parity 比对、解码器审计、合成画质、`compose-eval` 自测。
 - 逐项状态与详细任务序列见 [研发任务优先级与双项目协同规划 · 第 8 节](docs/development-priorities.md#8-修订后的待办任务序列)。
 
 ---

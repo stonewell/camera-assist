@@ -2,6 +2,10 @@
 members = [
     "compose-core",
     "compose-ffi",
+    "perception-onnx",
+    "media-io",
+    "review-engine",
+    "compose-eval",
 ]
 resolver = "2"
 

@@ -1,0 +1,17 @@
+[package]
+name = "review-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Photo Review, batch auto-fix generation and non-destructive album culling engine"
+
+[dependencies]
+compose-core = { path = "../compose-core" }
+media-io = { path = "../media-io" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

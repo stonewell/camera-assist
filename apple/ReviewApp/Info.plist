@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key>
+    <string>com.stonewell.camera-assist.review</string>
+    <key>CFBundleName</key>
+    <string>ReviewApp</string>
+    <key>CFBundleDisplayName</key>
+    <string>相册审片与废片拯救</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>需要访问相册以进行照片智能评分、构图分析与废片拯救</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>需要相册写入权限以保存非破坏性照片调整</string>
+</dict>
+</plist>

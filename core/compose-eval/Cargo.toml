@@ -1,0 +1,23 @@
+[package]
+name = "compose-eval"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Offline evaluation and benchmarking workspace for composition rules"
+
+[[bin]]
+name = "compose-eval"
+path = "src/main.rs"
+
+[dependencies]
+compose-core = { path = "../compose-core" }
+review-engine = { path = "../review-engine" }
+media-io = { path = "../media-io" }
+perception-onnx = { path = "../perception-onnx" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

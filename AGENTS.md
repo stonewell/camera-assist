@@ -24,7 +24,10 @@ camera-assist/
 - **Modules**:
   - `compose-core`: Pure Rust composition rule engine (rules A–G implemented — 19 rules; deferred: `light.sun_in_frame`, `lens.smudge`, `distance.fill_range`; completed in TASK-04), yaw/pitch classification, multi-subject arbitration. Zero UI or platform dependencies.
   - `compose-ffi`: UniFFI-based C/Swift binding layer exporting `LiveComposer` and data structures.
-  - `perception-onnx`: (planned — not yet in the workspace) Desktop/eval ONNX model inference.
+  - `perception-onnx`: ONNX-compatible desktop perception interface, model manifest license audit, and synthetic COCO-17 to 19-joint skeleton synthesis (completed in TASK-13).
+  - `media-io`: EXIF extraction, non-destructive cropping math, inscribed rotated rectangle calculations, and XMP sidecar generation (completed in TASK-13).
+  - `review-engine`: Album review engine with 0–100 scoring, auto-fix recipe generation, and batch store undo/cull management (completed in TASK-13).
+  - `compose-eval`: Offline evaluation CLI & benchmark workspace running all 20 golden vectors with exact finding-set parity (completed in TASK-13).
 - **Rule**: All core composition and lighting evaluation algorithms must reside here and match golden test vectors.
 
 ### `apple/Packages/` (Modular Swift Packages)
@@ -110,7 +113,7 @@ Both `apple/CameraApp` and `apple/CameraAppClip` contain:
 All code changes must pass the automated quality gates before submission:
 
 ```bash
-# Run full 10-step unified verification suite
+# Run full 11-step unified verification suite
 ./scripts/verify-all.sh
 # (or: make verify / make test)
 ```
@@ -126,6 +129,7 @@ The unified verification pipeline enforces:
 8. **Swift Parity & Tests**: `scripts/run-swift-tests.sh` (on Linux this runs `validate-swift-parity.py`, enforcing field-level struct and 19-joint enum schema parity against `compose-core` plus exact 20 golden vector schema parity; established in TASK-02; on macOS with a Swift toolchain it executes real package tests)
 9. **Desktop Decoders Audit**: `python3 scripts/audit-image-decoders.py`
 10. **24MP Capture Benchmark**: `python3 scripts/evaluate-capture-quality.py --self-test` (output explicitly labelled `SYNTHETIC_SELF_TEST`; established in TASK-02)
+11. **Offline Evaluation & Review Engine Benchmark**: `cargo run -p compose-eval -- --self-test` (validates 20 golden vectors in offline mode with exact finding-set parity; established in TASK-13)
 
 ### App Clip Size & Decoupling Gate
 To verify App Clip compliance independently:

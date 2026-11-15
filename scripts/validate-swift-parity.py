@@ -19,6 +19,9 @@ def main() -> int:
     perception_kit_dir = repo_root / "apple" / "Packages" / "PerceptionKit"
     camera_app_dir = repo_root / "apple" / "CameraApp"
     camera_clip_dir = repo_root / "apple" / "CameraAppClip"
+    review_app_dir = repo_root / "apple" / "ReviewApp"
+    flutter_dir = repo_root / "desktop" / "review_flutter"
+    core_dir = repo_root / "core"
     fixtures_dir = repo_root / "fixtures" / "golden"
 
     print("--- [validate-swift-parity] Checking Swift Package Declarations ---")
@@ -30,7 +33,8 @@ def main() -> int:
         capture_kit_dir / "Package.swift",
         perception_kit_dir / "Package.swift",
         camera_app_dir / "Package.swift",
-        camera_clip_dir / "Package.swift"
+        camera_clip_dir / "Package.swift",
+        review_app_dir / "Package.swift",
     ]
 
     for pkg in packages:
@@ -817,6 +821,83 @@ def main() -> int:
             return 1
     print("  ✓ CameraApp.swift verified with onOpenURL and speaker mute toggle.")
     print("--- [validate-swift-parity] TASK-12 VoicePrompter & ControlWidget parity gate passed. ---")
+
+    # 13. Check ReviewApp, Review Engine & Offline Evaluation (TASK-13)
+    print("--- [validate-swift-parity] Checking ReviewApp, Review Engine & Offline Evaluation (TASK-13) ---")
+
+    # 13.1 Check Rust Workspace 4 new crates in core/
+    core_cargo_toml = (core_dir / "Cargo.toml").read_text(encoding="utf-8")
+    for crate in ["perception-onnx", "media-io", "review-engine", "compose-eval"]:
+        if f'"{crate}"' not in core_cargo_toml:
+            print(f"[FAIL] core/Cargo.toml members missing crate: {crate}", file=sys.stderr)
+            return 1
+        crate_src = core_dir / crate / "src" / "lib.rs"
+        if not crate_src.is_file():
+            print(f"[FAIL] Missing Rust crate source: {crate_src}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Verified Rust crate '{crate}' in workspace.")
+
+    # 13.2 Check Apple ReviewApp structure and files
+    review_files = [
+        review_app_dir / "Package.swift",
+        review_app_dir / "xtool.yml",
+        review_app_dir / "Info.plist",
+        review_app_dir / "ReviewApp.swift",
+        review_app_dir / "ReviewFeature" / "NonDestructiveAdjustmentStore.swift",
+        review_app_dir / "ReviewFeature" / "PhotoReviewCoordinator.swift",
+    ]
+    for fp in review_files:
+        if not fp.is_file():
+            print(f"[FAIL] Missing ReviewApp source file: {fp}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Found ReviewApp file: {fp.relative_to(repo_root)}")
+
+    # 13.3 Check Apple ReviewApp key symbols
+    review_all_text = ""
+    for fp in review_files:
+        review_all_text += "\n" + fp.read_text(encoding="utf-8")
+
+    expected_review_symbols = [
+        "PHAdjustmentData",
+        "AdjustmentPayload",
+        "NonDestructiveAdjustmentStore",
+        "PhotoReviewCoordinator",
+        "analyzeStill",
+        "batchApplyAllAutoFixes",
+        "revertAdjustment",
+        "PhotoReviewWorkspaceView",
+    ]
+    for sym in expected_review_symbols:
+        if sym not in review_all_text:
+            print(f"[FAIL] ReviewApp sources missing required symbol: {sym}", file=sys.stderr)
+            return 1
+    print(f"  ✓ ReviewApp verified with all {len(expected_review_symbols)} required PhotoReview symbols.")
+
+    # 13.4 Check Desktop Flutter Workspace
+    flutter_files = [
+        flutter_dir / "pubspec.yaml",
+        flutter_dir / "lib" / "main.dart",
+    ]
+    for fp in flutter_files:
+        if not fp.is_file():
+            print(f"[FAIL] Missing Flutter desktop file: {fp}", file=sys.stderr)
+            return 1
+        print(f"  ✓ Found Flutter desktop file: {fp.relative_to(repo_root)}")
+
+    flutter_main_text = (flutter_dir / "lib" / "main.dart").read_text(encoding="utf-8")
+    expected_flutter_symbols = [
+        "GridView.builder",
+        "ReviewWorkspacePage",
+        "BeforeAfterComparisonView",
+        "ReviewFlutterApp",
+        "FilterChip",
+    ]
+    for sym in expected_flutter_symbols:
+        if sym not in flutter_main_text:
+            print(f"[FAIL] Flutter desktop main.dart missing required symbol: {sym}", file=sys.stderr)
+            return 1
+    print(f"  ✓ Flutter desktop workspace verified with all {len(expected_flutter_symbols)} required UI symbols.")
+    print("--- [validate-swift-parity] TASK-13 ReviewApp, Review Engine & Offline Evaluation parity gate passed. ---")
     return 0
 
 
