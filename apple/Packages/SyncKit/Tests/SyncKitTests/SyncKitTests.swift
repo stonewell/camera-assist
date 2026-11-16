@@ -296,6 +296,19 @@ final class SyncKitTests: XCTestCase {
         XCTAssertEqual(parsedSessionId, sessionId)
         XCTAssertEqual(parsedToken, token)
         XCTAssertEqual(parsedKey, key)
+
+        let offlineLink = URLFragmentKey.buildUniversalLink(
+            baseURL: baseURL,
+            sessionId: sessionId,
+            token: token,
+            key: key,
+            isOfflineMode: true
+        )
+        XCTAssertTrue(offlineLink.absoluteString.contains("off=1"))
+        let (parsedOfflineSessionId, parsedOfflineToken, parsedOfflineKey) = try URLFragmentKey.parseUniversalLink(offlineLink)
+        XCTAssertEqual(parsedOfflineSessionId, sessionId)
+        XCTAssertEqual(parsedOfflineToken, token)
+        XCTAssertEqual(parsedOfflineKey, key)
     }
 
     // MARK: - In-Memory Transport & End-to-End Session Tests
@@ -487,6 +500,286 @@ final class SyncKitTests: XCTestCase {
 
         await ownerSession.close()
         await guestSession.close()
+    }
+
+    // MARK: - FallbackSyncTransport & Bonjour Tests (TASK-17)
+
+    #if canImport(Network)
+    func testBonjourDefaultServiceType() {
+        XCTAssertEqual(BonjourTransport.defaultServiceType, "_camera-sync._tcp")
+    }
+    #endif
+
+    func testFallbackSyncTransportPreferLocalOnly() async throws {
+        let primary = MockSyncTransport()
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(
+            primary: primary,
+            fallback: fallback,
+            preferLocalOnly: true
+        )
+
+        XCTAssertNil(transport.activeRoute)
+        XCTAssertNil(transport.activeTransport)
+
+        try await transport.connect()
+
+        XCTAssertEqual(transport.activeRoute, .bonjour)
+        XCTAssertTrue(transport.activeTransport === fallback)
+        let state = await transport.state
+        XCTAssertEqual(state, .connected)
+        XCTAssertEqual(primary.connectCallCount, 0, "Primary must not connect when preferLocalOnly is true")
+        XCTAssertEqual(fallback.connectCallCount, 1, "Fallback must connect directly")
+
+        await transport.close()
+        XCTAssertNil(transport.activeRoute)
+        let closedState = await transport.state
+        XCTAssertEqual(closedState, .disconnected)
+        XCTAssertEqual(fallback.closeCallCount, 1)
+        XCTAssertEqual(primary.closeCallCount, 1)
+    }
+
+    func testFallbackSyncTransportFallsBackWhenPrimaryThrows() async throws {
+        let primary = MockSyncTransport()
+        primary.shouldFailConnect = true
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(
+            primary: primary,
+            fallback: fallback,
+            preferLocalOnly: false,
+            primaryConnectTimeoutNanoseconds: 1_000_000_000
+        )
+
+        try await transport.connect()
+
+        XCTAssertEqual(transport.activeRoute, .bonjour)
+        XCTAssertTrue(transport.activeTransport === fallback)
+        let state = await transport.state
+        XCTAssertEqual(state, .connected)
+        XCTAssertEqual(primary.connectCallCount, 1)
+        XCTAssertEqual(primary.closeCallCount, 1, "Primary must be closed on fallback")
+        XCTAssertEqual(fallback.connectCallCount, 1)
+
+        await transport.close()
+    }
+
+    func testFallbackSyncTransportFallsBackWhenPrimaryTimesOut() async throws {
+        let primary = MockSyncTransport()
+        // Simulate hang/delay longer than timeout: 500ms delay vs 50ms timeout
+        primary.connectDelayNanoseconds = 500_000_000
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(
+            primary: primary,
+            fallback: fallback,
+            preferLocalOnly: false,
+            primaryConnectTimeoutNanoseconds: 50_000_000 // 50ms
+        )
+
+        try await transport.connect()
+
+        XCTAssertEqual(transport.activeRoute, .bonjour)
+        XCTAssertTrue(transport.activeTransport === fallback)
+        let state = await transport.state
+        XCTAssertEqual(state, .connected)
+        XCTAssertEqual(primary.connectCallCount, 1)
+        XCTAssertEqual(fallback.connectCallCount, 1)
+
+        await transport.close()
+    }
+
+    func testFallbackSyncTransportPrimarySucceeds() async throws {
+        let primary = MockSyncTransport()
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(
+            primary: primary,
+            fallback: fallback,
+            preferLocalOnly: false
+        )
+
+        try await transport.connect()
+
+        XCTAssertEqual(transport.activeRoute, .webSocket)
+        XCTAssertTrue(transport.activeTransport === primary)
+        let state = await transport.state
+        XCTAssertEqual(state, .connected)
+        XCTAssertEqual(primary.connectCallCount, 1)
+        XCTAssertEqual(fallback.connectCallCount, 0, "Fallback must not connect when primary succeeds")
+
+        await transport.close()
+    }
+
+    func testFallbackSyncTransportBothFail() async throws {
+        let primary = MockSyncTransport()
+        primary.shouldFailConnect = true
+        let fallback = MockSyncTransport()
+        fallback.shouldFailConnect = true
+
+        let transport = FallbackSyncTransport(
+            primary: primary,
+            fallback: fallback,
+            preferLocalOnly: false
+        )
+
+        do {
+            try await transport.connect()
+            XCTFail("Must throw when both transports fail")
+        } catch {
+            XCTAssertNil(transport.activeRoute)
+            let state = await transport.state
+            if case .failed = state {
+                // expected
+            } else {
+                XCTFail("Expected .failed state, got \(state)")
+            }
+        }
+    }
+
+    func testFallbackSyncTransportForwardingSendReceiveCloseAndDisconnect() async throws {
+        let primary = MockSyncTransport()
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(
+            primary: primary,
+            fallback: fallback,
+            preferLocalOnly: false
+        )
+
+        try await transport.connect()
+        XCTAssertEqual(transport.activeRoute, .webSocket)
+
+        // 1. send(message:)
+        let dummyPayload = HandshakePayload(sessionId: UUID(), token: "token", clientRole: .owner)
+        let testMessage = SyncMessage.handshake(dummyPayload)
+        try await transport.send(message: testMessage)
+        XCTAssertEqual(primary.sentMessages.count, 1)
+        if case .handshake(let p) = primary.sentMessages.first {
+            XCTAssertEqual(p.token, "token")
+        } else {
+            XCTFail("Wrong sent message")
+        }
+
+        // 2. send(data:)
+        let testData = Data([0x01, 0x02, 0x03, 0x04])
+        try await transport.send(data: testData)
+        XCTAssertEqual(primary.sentData, [testData])
+
+        // 3. receive()
+        let receivePayload = HandshakePayload(sessionId: UUID(), token: "received-token", clientRole: .guest)
+        primary.messageToReceive = .handshake(receivePayload)
+        let received = try await transport.receive()
+        if case .handshake(let p) = received {
+            XCTAssertEqual(p.token, "received-token")
+        } else {
+            XCTFail("Wrong received message")
+        }
+
+        // 4. disconnect() delegates to close()
+        await transport.disconnect()
+        XCTAssertNil(transport.activeRoute)
+        let state = await transport.state
+        XCTAssertEqual(state, .disconnected)
+        XCTAssertEqual(primary.closeCallCount, 1)
+        XCTAssertEqual(fallback.closeCallCount, 1)
+    }
+
+    func testFallbackSyncTransportForwardingToFallback() async throws {
+        let primary = MockSyncTransport()
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(
+            primary: primary,
+            fallback: fallback,
+            preferLocalOnly: true
+        )
+
+        try await transport.connect()
+        XCTAssertEqual(transport.activeRoute, .bonjour)
+
+        // Forward message to fallback
+        let payload = HandshakePayload(sessionId: UUID(), token: "local-token", clientRole: .guest)
+        try await transport.send(message: .handshake(payload))
+        XCTAssertEqual(fallback.sentMessages.count, 1)
+        XCTAssertEqual(primary.sentMessages.count, 0)
+
+        // Forward data to fallback
+        let testData = Data([0xDE, 0xAD])
+        try await transport.send(data: testData)
+        XCTAssertEqual(fallback.sentData, [testData])
+        XCTAssertEqual(primary.sentData.count, 0)
+
+        // Forward receive from fallback
+        fallback.messageToReceive = .handshake(payload)
+        let received = try await transport.receive()
+        if case .handshake(let p) = received {
+            XCTAssertEqual(p.token, "local-token")
+        } else {
+            XCTFail("Wrong message received")
+        }
+
+        await transport.close()
+        XCTAssertNil(transport.activeRoute)
+        XCTAssertEqual(fallback.closeCallCount, 1)
+        XCTAssertEqual(primary.closeCallCount, 1)
+    }
+
+    func testFallbackSyncTransportStreamForwarding() async throws {
+        let primary = MockSyncTransport()
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(primary: primary, fallback: fallback)
+
+        // Stream created before connect
+        let streamBeforeConnect = transport.makeMessageStream()
+        var iteratorBefore = streamBeforeConnect.makeAsyncIterator()
+
+        try await transport.connect()
+
+        // Stream created after connect
+        let streamAfterConnect = transport.makeMessageStream()
+        var iteratorAfter = streamAfterConnect.makeAsyncIterator()
+
+        let testStatus = SyncMessage.statusUpdate(.ready)
+        primary.yieldStreamMessage(testStatus)
+
+        let receivedBefore = await iteratorBefore.next()
+        let receivedAfter = await iteratorAfter.next()
+
+        XCTAssertEqual(receivedBefore, testStatus)
+        XCTAssertEqual(receivedAfter, testStatus)
+
+        await transport.close()
+    }
+
+    func testFallbackSyncTransportSendReceiveThrowsWhenNotConnected() async throws {
+        let primary = MockSyncTransport()
+        let fallback = MockSyncTransport()
+
+        let transport = FallbackSyncTransport(primary: primary, fallback: fallback)
+
+        do {
+            try await transport.send(message: .statusUpdate(.ready))
+            XCTFail("Should throw notConnected")
+        } catch {
+            XCTAssertEqual(error as? TransportError, TransportError.notConnected)
+        }
+
+        do {
+            try await transport.send(data: Data())
+            XCTFail("Should throw notConnected")
+        } catch {
+            XCTAssertEqual(error as? TransportError, TransportError.notConnected)
+        }
+
+        do {
+            _ = try await transport.receive()
+            XCTFail("Should throw notConnected")
+        } catch {
+            XCTAssertEqual(error as? TransportError, TransportError.notConnected)
+        }
     }
 
     // MARK: - CryptoKit Production E2EE Tests (Apple Platforms)
@@ -684,3 +977,101 @@ final class SyncKitTests: XCTestCase {
     }
     #endif
 }
+
+// MARK: - Test Support Mocks
+
+private final class MockSyncTransport: SyncTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _state: TransportState = .disconnected
+    var shouldFailConnect: Bool = false
+    var connectDelayNanoseconds: UInt64 = 0
+    var connectCallCount: Int = 0
+    var closeCallCount: Int = 0
+    var sentMessages: [SyncMessage] = []
+    var sentData: [Data] = []
+    var messageToReceive: SyncMessage?
+    var receiveDelayNanoseconds: UInt64 = 0
+    private var streamContinuations: [AsyncStream<SyncMessage>.Continuation] = []
+
+    private func withLock<R>(_ body: () throws -> R) rethrows -> R {
+        lock.lock()
+        defer { lock.unlock() }
+        return try body()
+    }
+
+    var state: TransportState {
+        withLock { _state }
+    }
+
+    func connect() async throws {
+        let (shouldFail, delay) = withLock { () -> (Bool, UInt64) in
+            connectCallCount += 1
+            _state = .connecting
+            return (shouldFailConnect, connectDelayNanoseconds)
+        }
+        if delay > 0 {
+            try await Task.sleep(nanoseconds: delay)
+        }
+        if shouldFail {
+            withLock { _state = .failed("Connection simulated error") }
+            throw TransportError.peerUnavailable
+        }
+        withLock { _state = .connected }
+    }
+
+    func send(message: SyncMessage) async throws {
+        withLock {
+            sentMessages.append(message)
+        }
+    }
+
+    func send(data: Data) async throws {
+        withLock {
+            sentData.append(data)
+        }
+    }
+
+    func receive() async throws -> SyncMessage {
+        let (msg, delay) = withLock { (messageToReceive, receiveDelayNanoseconds) }
+        if delay > 0 {
+            try await Task.sleep(nanoseconds: delay)
+        }
+        if let msg = msg {
+            return msg
+        }
+        throw TransportError.receiveFailed("No message to receive")
+    }
+
+    func yieldStreamMessage(_ message: SyncMessage) {
+        withLock {
+            for continuation in streamContinuations {
+                continuation.yield(message)
+            }
+        }
+    }
+
+    func makeMessageStream() -> AsyncStream<SyncMessage> {
+        AsyncStream<SyncMessage> { continuation in
+            withLock {
+                self.streamContinuations.append(continuation)
+            }
+            continuation.onTermination = { [weak self] _ in
+                self?.withLock {
+                    self?.streamContinuations.removeAll()
+                }
+            }
+        }
+    }
+
+    func close() async {
+        withLock {
+            closeCallCount += 1
+            _state = .disconnected
+            for continuation in streamContinuations {
+                continuation.finish()
+            }
+            streamContinuations.removeAll()
+        }
+    }
+}
+

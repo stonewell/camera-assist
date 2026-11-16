@@ -181,7 +181,13 @@ public struct SessionToken: Codable, Equatable, Sendable {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
-        return signature == expectedSignature
+        let sigBytes = Data(signature.utf8)
+        let expectedBytes = Data(expectedSignature.utf8)
+        guard sigBytes.count == expectedBytes.count else { return false }
+        let diff = zip(sigBytes, expectedBytes).reduce(UInt8(0)) { acc, pair in
+            acc | (pair.0 ^ pair.1)
+        }
+        return diff == 0
     }
 
     private func computeSignature(secret: Data) -> Data {

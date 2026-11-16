@@ -6,9 +6,11 @@ import Network
 /// Local P2P Bonjour / Multipeer transport implementation using Network.framework.
 /// Used for offline fallback in locations without cellular signal (canyons, cruises, mountains).
 public final class BonjourTransport: SyncTransport, @unchecked Sendable {
+    public static let defaultServiceType = "_camera-sync._tcp"
+
     public enum Mode {
-        case listener(serviceType: String)
-        case browser(serviceType: String)
+        case listener(serviceType: String = defaultServiceType)
+        case browser(serviceType: String = defaultServiceType)
     }
 
     private let mode: Mode
@@ -22,7 +24,7 @@ public final class BonjourTransport: SyncTransport, @unchecked Sendable {
     private var _state: TransportState = .disconnected
     private var messageWaiters: [CheckedContinuation<SyncMessage, Error>] = []
     private var messageQueue: [SyncMessage] = []
-    private var streamContinuations: [AsyncStream<SyncMessage>.Continuation] = []
+    private var streamContinuations: [UUID: AsyncStream<SyncMessage>.Continuation] = [:]
 
     private func withLock<R>(_ body: () throws -> R) rethrows -> R {
         lock.lock()
@@ -34,7 +36,7 @@ public final class BonjourTransport: SyncTransport, @unchecked Sendable {
         withLock { _state }
     }
 
-    public init(mode: Mode = .browser(serviceType: "_camera-assist._tcp")) {
+    public init(mode: Mode = .browser(serviceType: defaultServiceType)) {
         self.mode = mode
     }
 
@@ -185,7 +187,7 @@ public final class BonjourTransport: SyncTransport, @unchecked Sendable {
 
     private func deliverMessage(_ msg: SyncMessage) {
         withLock {
-            for cont in streamContinuations {
+            for cont in streamContinuations.values {
                 cont.yield(msg)
             }
             if !messageWaiters.isEmpty {
@@ -255,19 +257,20 @@ public final class BonjourTransport: SyncTransport, @unchecked Sendable {
     }
 
     public func makeMessageStream() -> AsyncStream<SyncMessage> {
-        AsyncStream<SyncMessage> { continuation in
+        let id = UUID()
+        return AsyncStream<SyncMessage> { continuation in
             withLock {
-                streamContinuations.append(continuation)
+                streamContinuations[id] = continuation
             }
             continuation.onTermination = { [weak self] _ in
-                self?.removeStreamContinuation(continuation)
+                self?.removeStreamContinuation(id: id)
             }
         }
     }
 
-    private func removeStreamContinuation(_ target: AsyncStream<SyncMessage>.Continuation) {
+    private func removeStreamContinuation(id: UUID) {
         withLock {
-            streamContinuations.removeAll { _ in false }
+            _ = streamContinuations.removeValue(forKey: id)
         }
     }
 
@@ -276,7 +279,7 @@ public final class BonjourTransport: SyncTransport, @unchecked Sendable {
             _state = .failed(error.localizedDescription)
             let w = messageWaiters
             messageWaiters.removeAll()
-            for cont in streamContinuations { cont.finish() }
+            for cont in streamContinuations.values { cont.finish() }
             streamContinuations.removeAll()
             return w
         }
@@ -291,7 +294,7 @@ public final class BonjourTransport: SyncTransport, @unchecked Sendable {
             _state = .disconnected
             let w = messageWaiters
             messageWaiters.removeAll()
-            for cont in streamContinuations { cont.finish() }
+            for cont in streamContinuations.values { cont.finish() }
             streamContinuations.removeAll()
             return w
         }
@@ -312,7 +315,7 @@ public final class BonjourTransport: SyncTransport, @unchecked Sendable {
             browser = nil
             let w = messageWaiters
             messageWaiters.removeAll()
-            for cont in streamContinuations { cont.finish() }
+            for cont in streamContinuations.values { cont.finish() }
             streamContinuations.removeAll()
             return (c, l, b, w)
         }

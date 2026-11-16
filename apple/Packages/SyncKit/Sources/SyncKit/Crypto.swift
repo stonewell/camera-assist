@@ -293,13 +293,18 @@ public struct URLFragmentKey: Sendable {
         baseURL: URL,
         sessionId: UUID,
         token: String,
-        key: Data
+        key: Data,
+        isOfflineMode: Bool = false
     ) -> URL {
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) ?? URLComponents()
-        components.queryItems = [
+        var items = [
             URLQueryItem(name: "s", value: sessionId.uuidString),
             URLQueryItem(name: "t", value: token)
         ]
+        if isOfflineMode {
+            items.append(URLQueryItem(name: "off", value: "1"))
+        }
+        components.queryItems = items
         components.fragment = encodeKeyToFragment(key)
         return components.url ?? baseURL
     }
