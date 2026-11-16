@@ -47,6 +47,19 @@ public final class PerceptionScheduler: @unchecked Sendable {
 
     public init() {}
 
+    private func thermalPolicy(for thermalState: ProcessInfo.ThermalState) -> (rateMultiplier: Double, allowMask: Bool) {
+        switch thermalState {
+        case .nominal, .fair:
+            return (1.0, true)
+        case .serious:
+            return (0.5, true)
+        case .critical:
+            return (0.25, false)
+        @unknown default:
+            return (1.0, true)
+        }
+    }
+
     /// Evaluates which perception tasks should execute at `timestamp` given the current thermal state.
     public func schedule(
         at timestamp: Double,
@@ -56,23 +69,7 @@ public final class PerceptionScheduler: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let rateMultiplier: Double
-        let allowMask: Bool
-
-        switch thermalState {
-        case .nominal, .fair:
-            rateMultiplier = 1.0
-            allowMask = true
-        case .serious:
-            rateMultiplier = 0.5
-            allowMask = true
-        case .critical:
-            rateMultiplier = 0.25
-            allowMask = false
-        @unknown default:
-            rateMultiplier = 1.0
-            allowMask = true
-        }
+        let (rateMultiplier, allowMask) = thermalPolicy(for: thermalState)
 
         let poseInterval = 1.0 / (basePoseHz * rateMultiplier)
         let maskInterval = 1.0 / (baseMaskHz * rateMultiplier)
@@ -97,6 +94,24 @@ public final class PerceptionScheduler: @unchecked Sendable {
             runFaceFallback: runFace,
             runLumaProbe: runLuma
         )
+    }
+
+    /// Checks whether face fallback is due at `timestamp` (and records `lastFaceTime` if so),
+    /// used when body pose transitions to empty within the same frame.
+    public func tryTriggerFaceFallback(
+        at timestamp: Double,
+        thermalState: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
+    ) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let (rateMultiplier, _) = thermalPolicy(for: thermalState)
+        let faceInterval = 1.0 / (baseFaceHz * rateMultiplier)
+        let runFace = (timestamp - lastFaceTime) >= (faceInterval - cadenceEpsilon)
+        if runFace {
+            lastFaceTime = timestamp
+        }
+        return runFace
     }
 
     /// Evaluates detailed luminance metrics from an 8-bit luma grid.

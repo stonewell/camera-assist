@@ -17,7 +17,7 @@ public final class FrameSyncHub: @unchecked Sendable {
     private let attitudeTracker: AttitudeTracker
     private let subjectTracker: SubjectTracker
     private var latestSubjects: [Subject] = []
-    private var latestSubjectsTimestamp: Double = 0.0
+    private var latestSubjectsTimestamp: Double? = nil
     private var latestSubjectsPosture: Posture = .zero
     private var latestExposure: ExposureSummary = .daylight
     private var latestIntrinsics: CameraIntrinsics = .standardWide
@@ -197,7 +197,7 @@ public final class FrameSyncHub: @unchecked Sendable {
             let interp = findNearestMotionReadingInternal(for: t)
             self.latestSubjectsPosture = attitudeTracker.computeRawPosture(reading: interp)
         } else {
-            self.latestSubjectsTimestamp = 0.0
+            self.latestSubjectsTimestamp = nil
             self.latestSubjectsPosture = .zero
         }
     }
@@ -265,7 +265,7 @@ public final class FrameSyncHub: @unchecked Sendable {
         let posture = attitudeTracker.process(reading: matchedReading)
 
         let compensatedSubjects: [Subject]
-        if latestSubjectsTimestamp > 0.0 && abs(timestamp - latestSubjectsTimestamp) > 0.001 {
+        if let subTime = latestSubjectsTimestamp, abs(timestamp - subTime) > 0.001 {
             compensatedSubjects = compensateSubjects(
                 latestSubjects,
                 fromPosture: latestSubjectsPosture,
@@ -397,7 +397,7 @@ public final class FrameSyncHub: @unchecked Sendable {
         defer { lock.unlock() }
         motionRingBuffer.removeAll()
         latestSubjects.removeAll()
-        latestSubjectsTimestamp = 0.0
+        latestSubjectsTimestamp = nil
         latestSubjectsPosture = .zero
         latestLuminance = nil
         sunAzimuthDeg = nil

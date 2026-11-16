@@ -151,7 +151,11 @@ public final class VisionFrameProcessor: @unchecked Sendable {
         }
 
         // 2. 10Hz Face Fallback Detection (when pose found no subjects)
-        if schedule.runFaceFallback && !lastPoseFoundSubject {
+        let shouldRunFace = !lastPoseFoundSubject && (
+            schedule.runFaceFallback ||
+            (schedule.runBodyPose && scheduler.tryTriggerFaceFallback(at: input.timestamp, thermalState: thermalState))
+        )
+        if shouldRunFace {
             telemetry.faceExecutionCount += 1
 
             var faceBoxes: [NormalizedBox] = []
