@@ -98,7 +98,7 @@ public struct EncryptionEnvelope: Codable, Equatable, Sendable {
     public init(keyId: String = "", nonceBase64: String, ciphertext: Data, tagBase64: String) {
         self.keyId = keyId
         self.nonceBase64 = nonceBase64
-        self.ciphertext = ciphertext
+        self.ciphertext = Data(ciphertext)
         self.tagBase64 = tagBase64
     }
 }

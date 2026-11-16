@@ -427,7 +427,7 @@ final class SyncKitTests: XCTestCase {
 
         // 2. Tampered ciphertext is rejected
         var tamperedCiphertext = envelope.ciphertext
-        tamperedCiphertext[0] ^= 0xFF
+        tamperedCiphertext[tamperedCiphertext.startIndex] ^= 0xFF
         let tamperedEnvelope1 = EncryptionEnvelope(
             keyId: envelope.keyId,
             nonceBase64: envelope.nonceBase64,
@@ -818,9 +818,12 @@ final class SyncKitTests: XCTestCase {
 
         let envelope = try cipher.encrypt(data: plaintext, key: key, keyId: "test-k")
 
+        // Ensure ciphertext startIndex is normalized to 0
+        XCTAssertEqual(envelope.ciphertext.startIndex, 0)
+
         // Mutate ciphertext
         var tamperedCiphertext = envelope.ciphertext
-        tamperedCiphertext[0] ^= 0x01
+        tamperedCiphertext[tamperedCiphertext.startIndex] ^= 0x01
         let tamperedEnv1 = EncryptionEnvelope(
             keyId: envelope.keyId,
             nonceBase64: envelope.nonceBase64,
@@ -833,7 +836,7 @@ final class SyncKitTests: XCTestCase {
 
         // Mutate auth tag
         var tagData = Data(base64Encoded: envelope.tagBase64)!
-        tagData[0] ^= 0x01
+        tagData[tagData.startIndex] ^= 0x01
         let tamperedEnv2 = EncryptionEnvelope(
             keyId: envelope.keyId,
             nonceBase64: envelope.nonceBase64,
@@ -843,6 +846,18 @@ final class SyncKitTests: XCTestCase {
         XCTAssertThrowsError(try cipher.decrypt(envelope: tamperedEnv2, key: key)) { error in
             XCTAssertEqual(error as? CryptoError, CryptoError.authenticationFailed)
         }
+
+        // Verify sliced data normalization in EncryptionEnvelope
+        let slice = Data([0x00, 0x01, 0x02, 0x03, 0x04]).dropFirst(2)
+        XCTAssertNotEqual(slice.startIndex, 0)
+        let sliceEnvelope = EncryptionEnvelope(
+            keyId: "slice-test",
+            nonceBase64: envelope.nonceBase64,
+            ciphertext: slice,
+            tagBase64: envelope.tagBase64
+        )
+        XCTAssertEqual(sliceEnvelope.ciphertext.startIndex, 0)
+        XCTAssertEqual(sliceEnvelope.ciphertext[0], 0x02)
     }
 
     func testCurve25519KeyAgreementAndHKDF() throws {

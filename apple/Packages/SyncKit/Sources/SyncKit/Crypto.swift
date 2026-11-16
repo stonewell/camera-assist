@@ -148,11 +148,11 @@ public struct CryptoKitCipher: E2EECipher, Sendable {
         do {
             let sealed = try AES.GCM.seal(data, using: symKey)
             let nonceBase64 = Data(sealed.nonce).base64EncodedString()
-            let tagBase64 = sealed.tag.base64EncodedString()
+            let tagBase64 = Data(sealed.tag).base64EncodedString()
             return EncryptionEnvelope(
                 keyId: keyId,
                 nonceBase64: nonceBase64,
-                ciphertext: sealed.ciphertext,
+                ciphertext: Data(sealed.ciphertext),
                 tagBase64: tagBase64
             )
         } catch {
