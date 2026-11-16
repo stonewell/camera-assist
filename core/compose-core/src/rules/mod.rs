@@ -12,10 +12,10 @@ use crate::model::{Finding, Frame, LightContext};
 use std::collections::HashSet;
 
 pub use crop::{FeetFloatingRule, HeadCropRule, JointCropRule};
-pub use distance::{estimate_distance_m, DistortionRule, UltraWideEdgeRule};
-pub use lighting::{BacklitRule, FlatFrontRule, HarshTopRule, SideHarshRule};
+pub use distance::{estimate_distance_m, DistortionRule, FillRangeRule, UltraWideEdgeRule};
+pub use lighting::{BacklitRule, FlatFrontRule, HarshTopRule, SideHarshRule, SunInFrameRule};
 pub use multi_subject::{MultiSubjectBalanceRule, MultiSubjectOcclusionRule};
-pub use optics::{is_low_light, usable_light, LowLightRule};
+pub use optics::{is_low_light, usable_light, LensSmudgeRule, LowLightRule};
 pub use placement::{EdgeCrowdRule, HeadroomRule, LeadRoomRule, PlacementRule, ScaleRule};
 pub use posture::{PitchRule, TiltRule};
 
@@ -83,6 +83,9 @@ impl RulesEngine {
         self.rules.push(Box::new(HarshTopRule));
         self.rules.push(Box::new(FlatFrontRule));
         self.rules.push(Box::new(SideHarshRule));
+        self.rules.push(Box::new(SunInFrameRule));
+        self.rules.push(Box::new(LensSmudgeRule::default()));
+        self.rules.push(Box::new(FillRangeRule));
         self.rules.push(Box::new(UltraWideEdgeRule));
     }
 

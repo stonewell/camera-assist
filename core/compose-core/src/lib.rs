@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 pub mod arbiter;
+pub mod auto_settings;
 pub mod classify;
 pub mod config;
 pub mod hint;
@@ -12,6 +13,7 @@ pub mod model;
 pub mod rules;
 
 pub use arbiter::*;
+pub use auto_settings::*;
 pub use classify::*;
 pub use config::*;
 pub use hint::*;

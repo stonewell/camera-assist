@@ -1,3 +1,4 @@
+use super::optics::usable_light;
 use super::{Rule, RuleContext};
 use crate::config::DistanceThresholds;
 use crate::model::{
@@ -110,6 +111,68 @@ impl Rule for UltraWideEdgeRule {
                     "switch_zoom_1x",
                 )
                 .with_metrics(margin, ctx.config.distance.ultra_wide_edge),
+            )
+        } else {
+            None
+        }
+    }
+}
+
+/// Rule F3: Fill Flash Range Limit (Minor guidance when low ambient light needs fill flash but subject is beyond reach).
+#[derive(Debug, Default)]
+pub struct FillRangeRule;
+
+impl Rule for FillRangeRule {
+    fn id(&self) -> &'static str {
+        "distance.fill_range"
+    }
+
+    fn evaluate(&self, ctx: &RuleContext) -> Option<Finding> {
+        let primary = ctx.frame.primary_subject()?;
+        let light = usable_light(ctx.light, ctx.config.light.min_confidence)?;
+
+        if light.ev >= 5.5 {
+            return None;
+        }
+
+        if ctx.frame.camera.hfov_deg < 55.0 {
+            return None;
+        }
+
+        let height = primary.bounds.height;
+        if !(height > 0.05 && height < 0.35) {
+            return None;
+        }
+
+        let dist = estimate_distance_m(primary, &ctx.frame.camera, &ctx.config.distance).or_else(
+            || {
+                if ctx.frame.camera.hfov_deg.is_finite()
+                    && ctx.frame.camera.hfov_deg >= 10.0
+                    && ctx.frame.camera.hfov_deg <= 170.0
+                    && height > 0.01
+                {
+                    let hfov_rad = ctx.frame.camera.hfov_deg.to_radians();
+                    let f_norm = 0.5 / (hfov_rad / 2.0).tan();
+                    Some(ctx.config.distance.default_height_m * f_norm / height)
+                } else {
+                    None
+                }
+            },
+        )?;
+
+        let max_m = ctx.config.distance.fill_max_m;
+        if dist > max_m {
+            let needed_m = (dist - max_m).max(0.0);
+            let steps = ((needed_m / ctx.config.distance.step_length_m).ceil() as i32).max(1);
+            Some(
+                Finding::new(
+                    self.id(),
+                    Severity::Minor,
+                    Audience::Photographer,
+                    Action::StepForward { steps },
+                    "step_forward",
+                )
+                .with_metrics(dist, max_m),
             )
         } else {
             None
@@ -275,5 +338,74 @@ mod tests {
         assert_eq!(f.severity, Severity::Minor);
         assert_eq!(f.hint_key, "switch_zoom_1x");
         assert_eq!(f.primary_action, Action::SwitchZoom { factor: 1.0 });
+    }
+
+    #[test]
+    fn test_fill_range_rule() {
+        use crate::model::{LightContext, LightDirection, LightQuality};
+
+        // Subject with height = 0.20 (between 0.05 and 0.35)
+        let subject = Subject::new(1, NormalizedRect::new(0.35, 0.4, 0.3, 0.20));
+        let camera = CameraIntrinsics::new(24.0, 73.7); // 73.7 >= 55.0
+        let frame = Frame::new(1.0, Posture::ZERO)
+            .with_intrinsics(camera)
+            .with_subjects(vec![subject]);
+
+        let config = ThresholdConfig::default(); // fill_max_m = 3.0
+        let prev = HashSet::new();
+
+        // 1. Low light EV = 4.5 < 5.5, distance ≈ 5.5m > 3.0m -> triggers
+        let light_dim =
+            LightContext::new(LightDirection::Front, LightQuality::Soft, None, 4.5, 0.9);
+        let ctx = RuleContext {
+            frame: &frame,
+            light: Some(&light_dim),
+            config: &config,
+            previous_active: &prev,
+        };
+
+        let finding = FillRangeRule.evaluate(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.id, "distance.fill_range");
+        assert_eq!(f.severity, Severity::Minor);
+        assert_eq!(f.hint_key, "step_forward");
+        assert!(matches!(f.primary_action, Action::StepForward { steps } if steps >= 1));
+
+        // 2. Light EV >= 5.5 (e.g. 6.0) -> None
+        let light_normal =
+            LightContext::new(LightDirection::Front, LightQuality::Soft, None, 6.0, 0.9);
+        let ctx_normal = RuleContext {
+            frame: &frame,
+            light: Some(&light_normal),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(FillRangeRule.evaluate(&ctx_normal).is_none());
+
+        // 3. Narrow lens (hfov < 55.0) -> None
+        let frame_narrow = Frame::new(1.0, Posture::ZERO)
+            .with_intrinsics(CameraIntrinsics::new(70.0, 34.0))
+            .with_subjects(frame.subjects.clone());
+        let ctx_narrow = RuleContext {
+            frame: &frame_narrow,
+            light: Some(&light_dim),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(FillRangeRule.evaluate(&ctx_narrow).is_none());
+
+        // 4. Subject height too large (0.50 >= 0.35) -> None
+        let big_subject = Subject::new(1, NormalizedRect::new(0.35, 0.1, 0.3, 0.50));
+        let frame_big = Frame::new(1.0, Posture::ZERO)
+            .with_intrinsics(camera)
+            .with_subjects(vec![big_subject]);
+        let ctx_big = RuleContext {
+            frame: &frame_big,
+            light: Some(&light_dim),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(FillRangeRule.evaluate(&ctx_big).is_none());
     }
 }

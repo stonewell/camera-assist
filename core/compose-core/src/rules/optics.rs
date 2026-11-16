@@ -46,6 +46,85 @@ impl Rule for LowLightRule {
     }
 }
 
+/// Rule G2: Lens Smudge / Veil Glare Detection (Minor suggestion to clean lens when hazy glare is detected).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LensSmudgeRule {
+    /// Optional simulated glare metrics (overexposed_pct, clipped_highlight_pct, mean_luma) for evaluation.
+    pub simulated_glare: Option<(f32, f32, f32)>,
+}
+
+impl LensSmudgeRule {
+    pub fn new() -> Self {
+        Self {
+            simulated_glare: None,
+        }
+    }
+
+    pub fn with_simulated_glare(
+        overexposed_pct: f32,
+        clipped_highlight_pct: f32,
+        mean_luma: f32,
+    ) -> Self {
+        Self {
+            simulated_glare: Some((overexposed_pct, clipped_highlight_pct, mean_luma)),
+        }
+    }
+
+    /// Evaluates whether the given veil glare metrics and lighting state constitute a lens smudge.
+    pub fn is_smudge_condition(
+        light: Option<&LightContext>,
+        overexposed_pct: f32,
+        clipped_highlight_pct: f32,
+        mean_luma: f32,
+    ) -> bool {
+        let Some(light) = usable_light(light, 0.5) else {
+            return false;
+        };
+
+        overexposed_pct >= 0.08
+            && clipped_highlight_pct < 0.02
+            && light.ev >= 6.0
+            && light.confidence >= 0.5
+            && (0.45..=0.72).contains(&mean_luma)
+    }
+
+    /// Evaluates lens smudge finding explicitly with provided frame veil glare measurements.
+    pub fn evaluate_glare(
+        &self,
+        ctx: &RuleContext,
+        overexposed_pct: f32,
+        clipped_highlight_pct: f32,
+        mean_luma: f32,
+    ) -> Option<Finding> {
+        if Self::is_smudge_condition(ctx.light, overexposed_pct, clipped_highlight_pct, mean_luma) {
+            Some(
+                Finding::new(
+                    self.id(),
+                    Severity::Minor,
+                    Audience::Photographer,
+                    Action::CleanLens,
+                    "clean_lens",
+                )
+                .with_metrics(overexposed_pct, 0.08),
+            )
+        } else {
+            None
+        }
+    }
+}
+
+impl Rule for LensSmudgeRule {
+    fn id(&self) -> &'static str {
+        "lens.smudge"
+    }
+
+    fn evaluate(&self, ctx: &RuleContext) -> Option<Finding> {
+        let (overexposed_pct, clipped_highlight_pct, mean_luma) =
+            self.simulated_glare.unwrap_or((0.0, 0.0, 0.5));
+        self.evaluate_glare(ctx, overexposed_pct, clipped_highlight_pct, mean_luma)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +219,69 @@ mod tests {
             previous_active: &prev_active,
         };
         assert!(LowLightRule.evaluate(&ctx_active).is_some());
+    }
+
+    #[test]
+    fn test_lens_smudge_rule() {
+        let frame = Frame::new(1.0, Posture::ZERO);
+        let config = ThresholdConfig::default();
+        let prev = HashSet::new();
+
+        let light = LightContext::new(LightDirection::Front, LightQuality::Soft, None, 8.0, 0.9);
+        let ctx = RuleContext {
+            frame: &frame,
+            light: Some(&light),
+            config: &config,
+            previous_active: &prev,
+        };
+
+        // 1. Valid smudge glare: overexposed=0.10 >= 0.08, clipped=0.01 < 0.02, mean_luma=0.55
+        let rule = LensSmudgeRule::with_simulated_glare(0.10, 0.01, 0.55);
+        let finding = rule.evaluate(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.id, "lens.smudge");
+        assert_eq!(f.severity, Severity::Minor);
+        assert_eq!(f.primary_action, Action::CleanLens);
+        assert_eq!(f.hint_key, "clean_lens");
+
+        // 2. Insufficient overexposed pct (0.05 < 0.08)
+        let rule_low_over = LensSmudgeRule::with_simulated_glare(0.05, 0.01, 0.55);
+        assert!(rule_low_over.evaluate(&ctx).is_none());
+
+        // 3. Too much hard highlight clip (0.04 >= 0.02)
+        let rule_clipped = LensSmudgeRule::with_simulated_glare(0.10, 0.04, 0.55);
+        assert!(rule_clipped.evaluate(&ctx).is_none());
+
+        // 4. Low light EV (5.0 < 6.0)
+        let light_dim =
+            LightContext::new(LightDirection::Front, LightQuality::Soft, None, 5.0, 0.9);
+        let ctx_dim = RuleContext {
+            frame: &frame,
+            light: Some(&light_dim),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(rule.evaluate(&ctx_dim).is_none());
+
+        // 5. Low confidence light
+        let light_unconf =
+            LightContext::new(LightDirection::Front, LightQuality::Soft, None, 8.0, 0.3);
+        let ctx_unconf = RuleContext {
+            frame: &frame,
+            light: Some(&light_unconf),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(rule.evaluate(&ctx_unconf).is_none());
+
+        // 6. Mean luma out of bounds
+        let rule_dark = LensSmudgeRule::with_simulated_glare(0.10, 0.01, 0.40);
+        assert!(rule_dark.evaluate(&ctx).is_none());
+        let rule_bright = LensSmudgeRule::with_simulated_glare(0.10, 0.01, 0.75);
+        assert!(rule_bright.evaluate(&ctx).is_none());
+
+        // 7. Default rule has no simulated glare -> returns None
+        assert!(LensSmudgeRule::default().evaluate(&ctx).is_none());
     }
 }

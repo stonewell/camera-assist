@@ -186,6 +186,43 @@ impl Rule for SideHarshRule {
     }
 }
 
+/// Rule E5: Sun In Frame (Minor warning when low-angle direct sun is inside camera horizontal FOV).
+#[derive(Debug, Default)]
+pub struct SunInFrameRule;
+
+impl Rule for SunInFrameRule {
+    fn id(&self) -> &'static str {
+        "light.sun_in_frame"
+    }
+
+    fn evaluate(&self, ctx: &RuleContext) -> Option<Finding> {
+        let light = usable_light(ctx.light, ctx.config.light.min_confidence)?;
+        if should_suppress_for_low_light(ctx, light) {
+            return None;
+        }
+
+        if let (Some(elev), Some(az)) = (light.sun_elevation_deg, light.sun_azimuth_deg) {
+            let max_elev = ctx.config.light.sun_in_frame_max_elevation;
+            let half_hfov = ctx.frame.camera.hfov_deg * 0.5;
+
+            if elev >= 0.0 && elev <= max_elev && az.abs() <= half_hfov {
+                return Some(
+                    Finding::new(
+                        self.id(),
+                        Severity::Minor,
+                        Audience::Photographer,
+                        Action::MoveToShade,
+                        "move_to_shade",
+                    )
+                    .with_metrics(elev, max_elev),
+                );
+            }
+        }
+
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,5 +385,64 @@ mod tests {
         let f_side = SideHarshRule.evaluate(&ctx_side);
         assert!(f_side.is_some());
         assert_eq!(f_side.unwrap().hint_key, "turn_face_to_light");
+    }
+
+    #[test]
+    fn test_sun_in_frame_rule() {
+        let frame = test_frame_with_subject(); // hfov_deg = 73.7, half = 36.85
+        let config = ThresholdConfig::default(); // sun_in_frame_max_elevation = 30.0
+        let prev = HashSet::new();
+
+        // 1. In frame: elev=15.0, az=20.0 <= 36.85 -> triggers
+        let mut light_in_frame =
+            LightContext::new(LightDirection::Front, LightQuality::Hard, None, 14.0, 0.9);
+        light_in_frame.sun_elevation_deg = Some(15.0);
+        light_in_frame.sun_azimuth_deg = Some(20.0);
+        let ctx = RuleContext {
+            frame: &frame,
+            light: Some(&light_in_frame),
+            config: &config,
+            previous_active: &prev,
+        };
+        let finding = SunInFrameRule.evaluate(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.id, "light.sun_in_frame");
+        assert_eq!(f.severity, Severity::Minor);
+        assert_eq!(f.primary_action, Action::MoveToShade);
+        assert_eq!(f.hint_key, "move_to_shade");
+
+        // 2. Azimuth outside FOV: az=50.0 > 36.85 -> None
+        let mut light_out_az = light_in_frame.clone();
+        light_out_az.sun_azimuth_deg = Some(50.0);
+        let ctx_out_az = RuleContext {
+            frame: &frame,
+            light: Some(&light_out_az),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(SunInFrameRule.evaluate(&ctx_out_az).is_none());
+
+        // 3. Elevation too high: elev=45.0 > 30.0 -> None
+        let mut light_high = light_in_frame.clone();
+        light_high.sun_elevation_deg = Some(45.0);
+        let ctx_high = RuleContext {
+            frame: &frame,
+            light: Some(&light_high),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(SunInFrameRule.evaluate(&ctx_high).is_none());
+
+        // 4. Elevation below horizon: elev=-5.0 < 0.0 -> None
+        let mut light_neg = light_in_frame.clone();
+        light_neg.sun_elevation_deg = Some(-5.0);
+        let ctx_neg = RuleContext {
+            frame: &frame,
+            light: Some(&light_neg),
+            config: &config,
+            previous_active: &prev,
+        };
+        assert!(SunInFrameRule.evaluate(&ctx_neg).is_none());
     }
 }

@@ -501,6 +501,80 @@ impl Default for StillThresholds {
     }
 }
 
+/// AutoSettings exposure bias and recommendation thresholds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoSettingsConfig {
+    #[serde(default = "default_bias_backlit")]
+    pub bias_backlit: f32,
+    #[serde(default = "default_bias_backlit_max")]
+    pub bias_backlit_max: f32,
+    #[serde(default = "default_bias_front")]
+    pub bias_front: f32,
+    #[serde(default = "default_bias_overcast")]
+    pub bias_overcast: f32,
+    #[serde(default = "default_bias_snow")]
+    pub bias_snow: f32,
+    #[serde(default = "default_bias_silhouette")]
+    pub bias_silhouette: f32,
+    #[serde(alias = "biasRampEVPerSec", default = "default_bias_ramp_ev_per_sec")]
+    pub bias_ramp_ev_per_sec: f32,
+    #[serde(default = "default_warm_keep_kelvin")]
+    pub warm_keep_kelvin: u32,
+    #[serde(default = "default_night_mode_min_ev")]
+    pub night_mode_min_ev: f32,
+    #[serde(default = "default_zoom_threshold")]
+    pub zoom_threshold: f32,
+}
+
+fn default_bias_backlit() -> f32 {
+    0.7
+}
+fn default_bias_backlit_max() -> f32 {
+    1.3
+}
+fn default_bias_front() -> f32 {
+    -0.3
+}
+fn default_bias_overcast() -> f32 {
+    0.3
+}
+fn default_bias_snow() -> f32 {
+    0.7
+}
+fn default_bias_silhouette() -> f32 {
+    -1.0
+}
+fn default_bias_ramp_ev_per_sec() -> f32 {
+    1.0
+}
+fn default_warm_keep_kelvin() -> u32 {
+    5200
+}
+fn default_night_mode_min_ev() -> f32 {
+    7.0
+}
+fn default_zoom_threshold() -> f32 {
+    1.2
+}
+
+impl Default for AutoSettingsConfig {
+    fn default() -> Self {
+        Self {
+            bias_backlit: default_bias_backlit(),
+            bias_backlit_max: default_bias_backlit_max(),
+            bias_front: default_bias_front(),
+            bias_overcast: default_bias_overcast(),
+            bias_snow: default_bias_snow(),
+            bias_silhouette: default_bias_silhouette(),
+            bias_ramp_ev_per_sec: default_bias_ramp_ev_per_sec(),
+            warm_keep_kelvin: default_warm_keep_kelvin(),
+            night_mode_min_ev: default_night_mode_min_ev(),
+            zoom_threshold: default_zoom_threshold(),
+        }
+    }
+}
+
 /// Complete typed threshold configuration loaded from shared/config/Thresholds.json.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -539,6 +613,8 @@ pub struct ThresholdConfig {
     pub distance: DistanceThresholds,
     #[serde(default)]
     pub still: StillThresholds,
+    #[serde(default)]
+    pub auto_settings: AutoSettingsConfig,
     #[serde(default = "default_backend_overrides")]
     pub backend_overrides: std::collections::HashMap<String, BackendOverridePatch>,
 }
@@ -605,6 +681,7 @@ impl Default for ThresholdConfig {
             light: LightThresholds::default(),
             distance: DistanceThresholds::default(),
             still: StillThresholds::default(),
+            auto_settings: AutoSettingsConfig::default(),
             backend_overrides: default_backend_overrides(),
         }
     }

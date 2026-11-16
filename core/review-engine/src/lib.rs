@@ -65,6 +65,18 @@ impl AutoFixRecipe {
             is_applied: false,
         }
     }
+
+    pub fn perspective_tilt(tilt_deg: f32, confidence: f32) -> Self {
+        Self {
+            id: format!("perspective_{:.1}", tilt_deg),
+            kind: FixKind::PerspectiveTilt,
+            description: format!("透视收敛倾斜校正 {:.1}°", tilt_deg),
+            straighten_angle_deg: None,
+            crop: None,
+            confidence,
+            is_applied: false,
+        }
+    }
 }
 
 // MARK: - Review Photo Item
@@ -103,10 +115,27 @@ pub struct TripSummary {
     pub average_score: f32,
 }
 
+// MARK: - Review Engine Configuration
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewConfig {
+    pub keystone_min_converge_deg: f32,
+}
+
+impl Default for ReviewConfig {
+    fn default() -> Self {
+        Self {
+            keystone_min_converge_deg: 3.0,
+        }
+    }
+}
+
 // MARK: - Review Engine
 
 pub struct ReviewEngine {
     pub rules_engine: RulesEngine,
+    pub config: ReviewConfig,
 }
 
 impl Default for ReviewEngine {
@@ -117,7 +146,41 @@ impl Default for ReviewEngine {
 
 impl ReviewEngine {
     pub fn new(rules_engine: RulesEngine) -> Self {
-        Self { rules_engine }
+        let keystone_min_converge_deg = rules_engine.config().still.keystone_min_converge_deg;
+        Self {
+            rules_engine,
+            config: ReviewConfig {
+                keystone_min_converge_deg,
+            },
+        }
+    }
+
+    pub fn with_config(mut self, config: ReviewConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// Evaluates a still photo (alias for analyze_photo).
+    pub fn evaluate_photo(
+        &self,
+        photo_id: &str,
+        file_path: &str,
+        frame: &Frame,
+        light: Option<&LightContext>,
+    ) -> ReviewPhotoItem {
+        self.analyze_photo(photo_id, file_path, frame, light)
+    }
+
+    /// Evaluates a still photo with an explicit custom ReviewConfig.
+    pub fn evaluate_photo_with_config(
+        &self,
+        photo_id: &str,
+        file_path: &str,
+        frame: &Frame,
+        light: Option<&LightContext>,
+        config: &ReviewConfig,
+    ) -> ReviewPhotoItem {
+        self.analyze_photo_with_config(photo_id, file_path, frame, light, config)
     }
 
     /// Evaluates a still frame photograph, generating composition findings, 0-100 score,
@@ -128,6 +191,18 @@ impl ReviewEngine {
         file_path: &str,
         frame: &Frame,
         light: Option<&LightContext>,
+    ) -> ReviewPhotoItem {
+        self.analyze_photo_with_config(photo_id, file_path, frame, light, &self.config)
+    }
+
+    /// Evaluates a still frame photograph with an explicit ReviewConfig.
+    pub fn analyze_photo_with_config(
+        &self,
+        photo_id: &str,
+        file_path: &str,
+        frame: &Frame,
+        light: Option<&LightContext>,
+        config: &ReviewConfig,
     ) -> ReviewPhotoItem {
         let findings = self.rules_engine.evaluate(frame, light);
         let score = Self::calculate_score(&findings);
@@ -143,7 +218,14 @@ impl ReviewEngine {
             suggested_fixes.push(AutoFixRecipe::straighten(straighten_angle, 0.95));
         }
 
-        // 2. Check Auto-Crop (Headroom, placement, floating feet)
+        // 2. Check Perspective Keystone Tilt Convergence
+        let pitch = frame.posture.pitch_deg;
+        let abs_pitch = pitch.abs();
+        if abs_pitch >= config.keystone_min_converge_deg {
+            suggested_fixes.push(AutoFixRecipe::perspective_tilt(pitch, 0.85));
+        }
+
+        // 3. Check Auto-Crop (Headroom, placement, floating feet)
         if let Some(crop) = compute_auto_crop(frame, &findings, thresholds) {
             suggested_fixes.push(AutoFixRecipe::auto_crop(
                 crop,
@@ -355,5 +437,45 @@ mod tests {
         let parsed = ReviewBatchStore::from_json(&json).expect("from_json succeeds");
         assert_eq!(parsed.photos.len(), 1);
         assert_eq!(parsed.photos[0].photo_id, "p1");
+    }
+
+    #[test]
+    fn test_perspective_tilt_fix_and_keystone_config() {
+        let engine = ReviewEngine::default();
+        // Frame with pitch_deg = -5.0 (abs = 5.0 >= default keystone 3.0)
+        let frame = Frame::new(0.0, Posture::new(0.0, -5.0))
+            .with_intrinsics(CameraIntrinsics::new(24.0, 84.0));
+
+        let item = engine.analyze_photo("p1", "IMG_0001.JPG", &frame, None);
+        let tilt_fix = item
+            .suggested_fixes
+            .iter()
+            .find(|f| f.kind == FixKind::PerspectiveTilt);
+        assert!(tilt_fix.is_some());
+        let tilt_fix = tilt_fix.unwrap();
+        assert_eq!(tilt_fix.kind, FixKind::PerspectiveTilt);
+
+        // When custom config requires keystone_min_converge_deg = 6.0:
+        // 5.0 < 6.0 -> PerspectiveTilt should NOT be suggested
+        let custom_config = ReviewConfig {
+            keystone_min_converge_deg: 6.0,
+        };
+        let item_custom =
+            engine.analyze_photo_with_config("p1", "IMG_0001.JPG", &frame, None, &custom_config);
+        let tilt_fix_custom = item_custom
+            .suggested_fixes
+            .iter()
+            .find(|f| f.kind == FixKind::PerspectiveTilt);
+        assert!(tilt_fix_custom.is_none());
+
+        // Mild pitch 1.5 < 3.0 -> no tilt fix
+        let mild_frame = Frame::new(0.0, Posture::new(0.0, 1.5))
+            .with_intrinsics(CameraIntrinsics::new(24.0, 84.0));
+        let item_mild = engine.evaluate_photo("p2", "IMG_0002.JPG", &mild_frame, None);
+        assert!(item_mild
+            .suggested_fixes
+            .iter()
+            .find(|f| f.kind == FixKind::PerspectiveTilt)
+            .is_none());
     }
 }
