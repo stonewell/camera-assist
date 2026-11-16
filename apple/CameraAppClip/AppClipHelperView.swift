@@ -41,7 +41,12 @@ public struct AppClipCameraPreviewLayerView: UIViewRepresentable {
 }
 #else
 public struct AppClipCameraPreviewLayerView: View {
+    #if canImport(AVFoundation)
+    public init(session: AVCaptureSession? = nil) {}
+    #else
     public init() {}
+    #endif
+
     public var body: some View {
         LinearGradient(
             gradient: Gradient(colors: [Color.black, Color(white: 0.12), Color.black]),
@@ -298,7 +303,7 @@ public struct AppClipHelperView: View {
             Color.black.ignoresSafeArea()
 
             // 1. Camera Viewfinder Layer
-            #if canImport(AVFoundation)
+            #if canImport(UIKit) && canImport(AVFoundation)
             AppClipCameraPreviewLayerView(session: coordinator.captureSession)
                 .ignoresSafeArea()
             #else

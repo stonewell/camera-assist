@@ -270,9 +270,15 @@ public struct CameraViewfinderScreen: View {
         .sheet(isPresented: $coordinator.isThumbnailPreviewPresented) {
             PhotoThumbnailPreviewSheet(coordinator: coordinator)
         }
+        #if os(iOS) || os(tvOS) || os(watchOS)
         .fullScreenCover(isPresented: $coordinator.isStrangerReviewPresented) {
             StrangerCaptureReviewView(coordinator: coordinator)
         }
+        #else
+        .sheet(isPresented: $coordinator.isStrangerReviewPresented) {
+            StrangerCaptureReviewView(coordinator: coordinator)
+        }
+        #endif
     }
 
     // MARK: - Top Navigation Bar
