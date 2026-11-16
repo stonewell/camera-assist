@@ -320,6 +320,42 @@ public struct AppClipHelperView: View {
             VStack {
                 Spacer()
 
+                // Retry Upload Banner & Button on Failure
+                if (coordinator.syncStatus == .failed || coordinator.uploadError != nil) && !coordinator.isCompleted {
+                    VStack(spacing: 8) {
+                        if let errorMsg = coordinator.uploadError ?? coordinator.errorMessage {
+                            Text(errorMsg)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 6)
+                                .background(Color.black.opacity(0.7))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+
+                        Button(action: {
+                            Task {
+                                await coordinator.retryFailedUpload()
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 15, weight: .bold))
+                                Text("重试上传")
+                                    .font(.system(size: 15, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(Color.red.opacity(0.85))
+                            .clipShape(Capsule())
+                            .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)
+                        }
+                    }
+                    .padding(.bottom, 12)
+                }
+
                 // Opacity slider bar
                 HStack(spacing: 12) {
                     Image(systemName: "person.fill.viewfinder")
@@ -396,6 +432,9 @@ public struct AppClipHelperView: View {
                     }
                 )
             }
+        }
+        .onAppear {
+            coordinator.startViewfinderAndMotion()
         }
     }
 }

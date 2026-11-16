@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:camera-assist.app</string>
+        <string>appclips:camera-assist.app</string>
+        <string>applinks:clip.camera-assist.app</string>
+        <string>appclips:clip.camera-assist.app</string>
+    </array>
+    <key>com.apple.developer.on-demand-install-capable</key>
+    <true/>
+    <key>com.apple.developer.parent-application-identifiers</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.stonewell.camera-assist</string>
+    </array>
+</dict>
+</plist>

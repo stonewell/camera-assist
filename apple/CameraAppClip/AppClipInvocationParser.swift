@@ -46,6 +46,7 @@ public struct AppClipInvocationPayload: Sendable, Equatable {
     public let relayEndpoint: URL
     public let sessionKey: Data
     public let languageCode: String
+    public let isOfflineMode: Bool
 
     /// Sanitized relay URL with URL fragment stripped, safe to send over HTTP/WebSocket without leaking E2EE key.
     public var sanitizedRelayURL: URL {
@@ -61,7 +62,8 @@ public struct AppClipInvocationPayload: Sendable, Equatable {
         parsedToken: SessionToken,
         relayEndpoint: URL,
         sessionKey: Data,
-        languageCode: String = "zh-Hans"
+        languageCode: String = "zh-Hans",
+        isOfflineMode: Bool = false
     ) {
         self.rawURL = rawURL
         self.sessionId = sessionId
@@ -70,6 +72,7 @@ public struct AppClipInvocationPayload: Sendable, Equatable {
         self.relayEndpoint = relayEndpoint
         self.sessionKey = sessionKey
         self.languageCode = languageCode
+        self.isOfflineMode = isOfflineMode
     }
 }
 
@@ -137,6 +140,10 @@ public final class AppClipInvocationParser: Sendable {
         // 5. Language code (optional query 'lang', default zh-Hans)
         let lang = components.queryItems?.first(where: { $0.name == "lang" })?.value ?? "zh-Hans"
 
+        // 6. Offline mode (optional query 'off', off=1 or off=true)
+        let offVal = components.queryItems?.first(where: { $0.name == "off" })?.value?.lowercased()
+        let isOffline = (offVal == "1" || offVal == "true")
+
         return AppClipInvocationPayload(
             rawURL: url,
             sessionId: sessionId,
@@ -144,7 +151,8 @@ public final class AppClipInvocationParser: Sendable {
             parsedToken: parsedToken,
             relayEndpoint: resolvedRelayURL,
             sessionKey: sessionKey,
-            languageCode: lang
+            languageCode: lang,
+            isOfflineMode: isOffline
         )
     }
 
@@ -158,37 +166,5 @@ public final class AppClipInvocationParser: Sendable {
             throw AppClipInvocationError.invalidURL
         }
         return try parse(url: url)
-    }
-
-    /// Creates a mock demo invocation payload for standalone / SwiftUI preview testing.
-    public static func makeDemoInvocation(
-        sessionId: UUID = UUID(),
-        baseURL: URL = URL(string: "https://clip.camera-assist.app/assist")!,
-        languageCode: String = "zh-Hans"
-    ) -> AppClipInvocationPayload {
-        let key = URLFragmentKey.generateRandomKey()
-        let token = SessionToken.generate(
-            sessionId: sessionId,
-            role: .guest,
-            ttlSeconds: 600.0,
-            secret: key
-        )
-        let tokenStr = token.toTokenString()
-        let universalLink = URLFragmentKey.buildUniversalLink(
-            baseURL: baseURL,
-            sessionId: sessionId,
-            token: tokenStr,
-            key: key
-        )
-
-        return AppClipInvocationPayload(
-            rawURL: universalLink,
-            sessionId: sessionId,
-            tokenString: tokenStr,
-            parsedToken: token,
-            relayEndpoint: baseURL,
-            sessionKey: key,
-            languageCode: languageCode
-        )
     }
 }

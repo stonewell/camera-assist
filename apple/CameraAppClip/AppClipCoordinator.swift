@@ -229,6 +229,21 @@ private final class ClipPhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDel
 }
 #endif
 
+/// Errors occurring during App Clip still photo capture.
+public enum AppClipCaptureError: Error, LocalizedError, Equatable, Sendable {
+    case hardwareUnavailable
+    case captureFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .hardwareUnavailable:
+            return "相机硬件不可用"
+        case .captureFailed(let reason):
+            return "拍照失败: \(reason)"
+        }
+    }
+}
+
 /// Central coordinator managing App Clip invocation, AVFoundation viewfinder, CoreMotion attitude,
 /// and end-to-end encrypted photo return to owner device.
 @MainActor
@@ -243,6 +258,7 @@ public final class AppClipCoordinator: ObservableObject {
     @Published public private(set) var isSessionFinished: Bool = false
     @Published public private(set) var hasActiveInvocation: Bool = false
     @Published public var uploadError: String? = nil
+    @Published public var errorMessage: String? = nil
     @Published public var lastCaptureResult: CachedClipCapture? = nil
     @Published public var sessionRole: SessionRole = .guest
     @Published public var activeCue: StrangerCue = .connecting
@@ -281,12 +297,20 @@ public final class AppClipCoordinator: ObservableObject {
         self.hasActiveInvocation = true
         self.syncStatus = .connecting
         self.activeCue = .connecting
+        self.uploadError = nil
+        self.errorMessage = nil
 
         do {
             let payload = try AppClipInvocationParser.parse(url: url)
             self.invocationPayload = payload
 
-            let transport = WebSocketTransport(url: payload.sanitizedRelayURL)
+            let wsTransport = WebSocketTransport(url: payload.sanitizedRelayURL)
+            let bonjourTransport = BonjourTransport(mode: .browser(serviceType: BonjourTransport.defaultServiceType))
+            let transport = FallbackSyncTransport(
+                primary: wsTransport,
+                fallback: bonjourTransport,
+                preferLocalOnly: payload.isOfflineMode
+            )
             let session = SyncSession(
                 sessionId: payload.sessionId,
                 role: .guest,
@@ -307,6 +331,7 @@ public final class AppClipCoordinator: ObservableObject {
         } catch {
             self.syncStatus = .failed
             self.uploadError = "\(error.localizedDescription)"
+            self.errorMessage = "\(error.localizedDescription)"
             self.activeCue = .failed
         }
     }
@@ -316,6 +341,8 @@ public final class AppClipCoordinator: ObservableObject {
         self.hasActiveInvocation = true
         self.syncStatus = .connecting
         self.activeCue = .connecting
+        self.uploadError = nil
+        self.errorMessage = nil
 
         do {
             let payload = try AppClipInvocationParser.parse(userActivity: activity)
@@ -323,63 +350,8 @@ public final class AppClipCoordinator: ObservableObject {
         } catch {
             self.syncStatus = .failed
             self.uploadError = "\(error.localizedDescription)"
+            self.errorMessage = "\(error.localizedDescription)"
             self.activeCue = .failed
-        }
-    }
-
-    /// Boots up a standalone in-memory demo session with a realistic ReferencePackage.
-    public func startStandaloneDemoSession(reference: ReferencePackage? = nil) async {
-        let (guestTransport, ownerTransport) = InMemoryTransport.createPair()
-        let payload = AppClipInvocationParser.makeDemoInvocation()
-        self.invocationPayload = payload
-        self.syncStatus = .connecting
-        self.activeCue = .connecting
-
-        let guestSession = SyncSession(
-            sessionId: payload.sessionId,
-            role: .guest,
-            transport: guestTransport,
-            cipher: cipher,
-            sessionKey: payload.sessionKey
-        )
-        self.syncSession = guestSession
-
-        let ownerSession = SyncSession(
-            sessionId: payload.sessionId,
-            role: .owner,
-            transport: ownerTransport,
-            cipher: cipher,
-            sessionKey: payload.sessionKey
-        )
-
-        let targetRef = reference ?? ReferencePackage(
-            sessionId: payload.sessionId,
-            ownerDeviceToken: "owner-device-token-demo",
-            promptKey: "stranger.align_ghost",
-            targetFraming: NormalizedRect(x: 0.15, y: 0.12, width: 0.70, height: 0.76),
-            compositionType: "center_half_body",
-            targetZoomFactor: 1.0,
-            captureAngle: 0.0,
-            elevationDeg: 0.0,
-            rollDeg: 0.0,
-            languageCode: "zh-Hans"
-        )
-
-        Task {
-            try? await ownerSession.start(token: payload.parsedToken, secretForTokenVerification: payload.sessionKey)
-            try? await ownerSession.sendReferencePackage(targetRef)
-        }
-
-        do {
-            try await guestSession.start(token: payload.parsedToken)
-            let receivedRef = try await guestSession.receiveReferencePackage()
-            self.referencePackage = receivedRef
-            self.syncStatus = .syncing
-            self.activeCue = .alignGhost
-        } catch {
-            self.referencePackage = targetRef
-            self.syncStatus = .ready
-            self.activeCue = .alignGhost
         }
     }
 
@@ -429,29 +401,37 @@ public final class AppClipCoordinator: ObservableObject {
         captureSession.commitConfiguration()
         isSessionConfigured = true
     }
+    #endif
 
-    private func captureStillPhotoData() async -> Data {
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
-        if captureSession.isRunning, let connection = photoOutput.connection(with: .video), connection.isActive {
-            do {
-                let photoData = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
-                    let delegate = ClipPhotoCaptureDelegate(continuation: continuation)
-                    self.activeCaptureDelegate = delegate
-                    delegate.onCompletion = { [weak self] in
-                        Task { @MainActor [weak self] in
-                            self?.activeCaptureDelegate = nil
-                        }
+    #if canImport(AVFoundation)
+    private func captureStillPhotoData() async throws -> Data {
+        #if targetEnvironment(simulator)
+        throw AppClipCaptureError.hardwareUnavailable
+        #else
+        guard captureSession.isRunning, let connection = photoOutput.connection(with: .video), connection.isActive else {
+            throw AppClipCaptureError.hardwareUnavailable
+        }
+        do {
+            let photoData = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+                let delegate = ClipPhotoCaptureDelegate(continuation: continuation)
+                self.activeCaptureDelegate = delegate
+                delegate.onCompletion = { [weak self] in
+                    Task { @MainActor [weak self] in
+                        self?.activeCaptureDelegate = nil
                     }
-                    let settings = AVCapturePhotoSettings()
-                    self.photoOutput.capturePhoto(with: settings, delegate: delegate)
                 }
-                return photoData
-            } catch {
-                return makeCapturePhotoData()
+                let settings = AVCapturePhotoSettings()
+                self.photoOutput.capturePhoto(with: settings, delegate: delegate)
             }
+            return photoData
+        } catch {
+            throw AppClipCaptureError.captureFailed(error.localizedDescription)
         }
         #endif
-        return makeCapturePhotoData()
+    }
+    #else
+    private func captureStillPhotoData() async throws -> Data {
+        throw AppClipCaptureError.hardwareUnavailable
     }
     #endif
 
@@ -477,19 +457,41 @@ public final class AppClipCoordinator: ObservableObject {
         self.isCapturing = true
         self.isUploading = true
         self.uploadError = nil
+        self.errorMessage = nil
         self.activeCue = .uploading
 
-        #if canImport(AVFoundation)
-        let photoData = await captureStillPhotoData()
-        #else
-        let photoData = makeCapturePhotoData()
-        #endif
+        let photoData: Data
+        do {
+            photoData = try await captureStillPhotoData()
+        } catch {
+            self.uploadError = error.localizedDescription
+            self.errorMessage = error.localizedDescription
+            self.isCapturing = false
+            self.isUploading = false
+            self.syncStatus = .failed
+            self.activeCue = .failed
+            return
+        }
+
         let photoId = UUID().uuidString
         let rawJpegURL = sandboxCacheDirectory.appendingPathComponent("\(photoId).jpg")
         try? photoData.write(to: rawJpegURL)
 
         guard let sessionKey = invocationPayload?.sessionKey else {
-            self.uploadError = "缺少会话加密密钥，无法加密回传"
+            let desc = "缺少会话加密密钥，无法加密回传"
+            self.uploadError = desc
+            self.errorMessage = desc
+            self.syncStatus = .failed
+            self.isCapturing = false
+            self.isUploading = false
+            self.activeCue = .failed
+            return
+        }
+
+        guard let session = syncSession else {
+            let desc = "未建立有效的帮拍同步会话"
+            self.uploadError = desc
+            self.errorMessage = desc
             self.syncStatus = .failed
             self.isCapturing = false
             self.isUploading = false
@@ -532,28 +534,20 @@ public final class AppClipCoordinator: ObservableObject {
         )
         self.lastCaptureResult = cached
 
-        if let session = syncSession {
-            do {
-                try await session.sendCapturePackage(package)
-                self.isUploading = false
-                self.isCapturing = false
-                self.isCompleted = true
-                self.syncStatus = .completed
-                self.activeCue = .completed
-            } catch {
-                self.cachedPackageForRetry = package
-                self.uploadError = "\(error.localizedDescription)"
-                self.isUploading = false
-                self.isCapturing = false
-                self.activeCue = .failed
-            }
-        } else {
-            // Standalone mode completion
+        do {
+            try await session.sendCapturePackage(package)
             self.isUploading = false
             self.isCapturing = false
             self.isCompleted = true
             self.syncStatus = .completed
             self.activeCue = .completed
+        } catch {
+            self.cachedPackageForRetry = package
+            self.uploadError = "\(error.localizedDescription)"
+            self.errorMessage = "\(error.localizedDescription)"
+            self.isUploading = false
+            self.isCapturing = false
+            self.activeCue = .failed
         }
     }
 
@@ -562,6 +556,7 @@ public final class AppClipCoordinator: ObservableObject {
         guard let package = cachedPackageForRetry, let session = syncSession else { return }
         self.isUploading = true
         self.uploadError = nil
+        self.errorMessage = nil
         self.activeCue = .uploading
 
         do {
@@ -573,6 +568,7 @@ public final class AppClipCoordinator: ObservableObject {
             self.activeCue = .completed
         } catch {
             self.uploadError = "\(error.localizedDescription)"
+            self.errorMessage = "\(error.localizedDescription)"
             self.isUploading = false
             self.activeCue = .failed
         }
@@ -585,6 +581,7 @@ public final class AppClipCoordinator: ObservableObject {
         self.isCapturing = false
         self.isUploading = false
         self.uploadError = nil
+        self.errorMessage = nil
         self.syncStatus = .syncing
         self.activeCue = .alignGhost
     }
@@ -616,20 +613,5 @@ public final class AppClipCoordinator: ObservableObject {
         self.isCompleted = true
         self.syncStatus = .completed
         self.activeCue = .completed
-    }
-
-    // MARK: - Utilities
-
-    private func makeCapturePhotoData() -> Data {
-        // Generates minimal JPEG representation for standalone and simulator environments
-        let marker: [UInt8] = [
-            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
-            0x01, 0x01, 0x00, 0x48, 0x00, 0x48, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
-            0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08, 0x07, 0x07, 0x07, 0x09,
-            0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x10, 0x00, 0x10, 0x01, 0x01, 0x11,
-            0x00, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x55,
-            0xFF, 0xD9
-        ]
-        return Data(marker)
     }
 }
