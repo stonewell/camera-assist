@@ -294,39 +294,38 @@ Week 4 的核心目标是打通 **`PerceptionKit` (TASK-07) → `ComposeKit` (`L
 
 | ID | 任务 | 规模 | 依赖 | 涉及模块与核心文件 | 验收要点 |
 |---|---|---|---|---|---|
-| TASK-14 | 相机/相册权限、错误提示与引擎降级显式告警（P0） | M | 08 | `CameraCoordinator.swift`, `CaptureSessionManager.swift`, `CapturePhotoController.swift`, `CameraApp.swift` | 权限拒绝引导弹窗与跳转系统设置；会话中断/拍照超时/存储不足错误横幅提示；UniFFI/引擎降级显式黄色告警胶囊，杜绝静默失败 |
-| TASK-15 | `CameraApp` Owner 端 `SyncKit` 路人模式闭环（P0） | L | 08, 10, 11 | `CameraCoordinator.swift`, `CameraApp.swift` | 主人端帮拍二维码生成与会话发起；`ReferencePackage`（含鬼影叠层与取景参数）打包同步；`CapturePackage` 接收、自动解密暂存与相册确认回传全链路闭环 |
-| TASK-16 | App Store 合规资产、Entitlements 与签名配置（P0） | M | 08, 11 | `PrivacyInfo.xcprivacy`, `UILaunchScreen`, `Assets.xcassets`, `.entitlements`, `xtool.yml` | 完善 `PrivacyInfo.xcprivacy` 隐私清单；补齐 `UILaunchScreen` 与 1024x1024 图标资产；配置 Associated Domains 与 `xtool.yml` 签名/Bundle ID 生产配置 |
-| TASK-17 | `Info.plist` 声明、App Clip 生产流与多主体 HUD（P1） | M | 11, 15 | `CFBundleURLTypes`, `NSBonjourServices`, `NSLocalNetworkUsageDescription`, `AppClipStub.swift`, `AppClipCoordinator.swift`, `UserGuidanceHUD.swift` | `Info.plist` 协议与本地网络声明；移除 App Clip 假 JPEG 与演示兜底，新增 `BonjourTransport` 局域网回退；多主体站位与引导 HUD 渲染 |
-| TASK-18 | 相机常规控件、`SyncKit` 重连、云端中继与核心延后规则（P2） | L | 08, 10 | `CameraApp.swift`, `WebSocketTransport.swift`, `compose-core` (`rules/`), Cloudflare Worker | 闪光灯/曝光滑块/网格/倒计时/相册缩略图；`WebSocketTransport` 指数退避重连；部署 15m TTL 零知识中继；实现延后规则（`light.sun_in_frame`, `lens.smudge`, `distance.fill_range`）、`AutoSettingsPolicy` 与 `keystoneMinConvergeDeg` |
+| TASK-14 | 相机/相册权限、错误提示与引擎降级显式告警（P0） | M | 08 | `CameraCoordinator.swift`, `CaptureSessionManager.swift`, `CapturePhotoController.swift`, `CameraApp.swift` | **已完成（2026-11-16）**：权限拒绝引导弹窗与跳转系统设置；会话中断/拍照超时/存储不足错误横幅提示；UniFFI/引擎降级显式黄色告警胶囊，杜绝静默失败 |
+| TASK-15 | `CameraApp` Owner 端 `SyncKit` 路人模式闭环（P0） | L | 08, 10, 11 | `CameraCoordinator.swift`, `CameraApp.swift` | **已完成（2026-11-16）**：主人端帮拍二维码生成与会话发起；`ReferencePackage`（含鬼影叠层与取景参数）打包同步；`CapturePackage` 接收、自动解密暂存与相册确认回传全链路闭环 |
+| TASK-16 | App Store 合规资产、Entitlements 与签名配置（P0） | M | 08, 11 | `PrivacyInfo.xcprivacy`, `UILaunchScreen`, `Assets.xcassets`, `.entitlements`, `xtool.yml` | **已完成（2026-11-16）**：完善 `PrivacyInfo.xcprivacy` 隐私清单；补齐 `UILaunchScreen` 与 1024x1024 图标资产；配置 Associated Domains 与 `xtool.yml` 签名/Bundle ID 生产配置 |
+| TASK-17 | `Info.plist` 声明、App Clip 生产流与多主体 HUD（P1） | M | 11, 15 | `CFBundleURLTypes`, `NSBonjourServices`, `NSLocalNetworkUsageDescription`, `AppClipStub.swift`, `AppClipCoordinator.swift`, `UserGuidanceHUD.swift` | **已完成（2026-11-16）**：`Info.plist` 协议与本地网络声明；移除 App Clip 假 JPEG 与演示兜底，新增 `BonjourTransport` 局域网回退；多主体站位与引导 HUD 渲染 |
+| TASK-18 | 相机常规控件、`SyncKit` 重连、局域网直连与核心延后规则（P2） | L | 08, 10 | `CameraApp.swift`, `WebSocketTransport.swift`, `compose-core` (`rules/`), `FallbackSyncTransport.swift` | **已完成（2026-11-16）**：闪光灯/曝光滑块/网格/倒计时/相册缩略图；`WebSocketTransport` 指数退避重连；按用户需求采用本地/无网直连（Bonjour P2P，移除云端中继依赖）；实装延后规则（`light.sun_in_frame`, `lens.smudge`, `distance.fill_range`）、`AutoSettingsPolicy` 与 `keystoneMinConvergeDeg` |
 | TASK-19 | CI/CD 补全、文档同步与真机压测交付（P3） | M | 13, 14~18 | `.github/workflows/ci.yml`, `AGENTS.md`, 自动化脚本与发布流 | CI/CD 流水线补齐第 11 步 `compose-eval --self-test` 与 TestFlight 发布流；同步 `AGENTS.md` Linux xtool 编译指引；完成 P3-3 景区实测、P3-4 发热压测与 P3-5 多端交付 |
 
 #### 任务详细规格与实施要点
 
-- **TASK-14（P0）| 相机/相册权限、错误提示与引擎降级显式告警** (`CameraCoordinator.swift`, `CaptureSessionManager.swift`, `CapturePhotoController.swift`, `CameraApp.swift`)
+- **TASK-14（P0，已完成）| 相机/相册权限、错误提示与引擎降级显式告警** (`CameraCoordinator.swift`, `CaptureSessionManager.swift`, `CapturePhotoController.swift`, `CameraApp.swift`)
   - **权限状态机与友好引导**：在应用冷启动与拍照触发时，规范检查 `AVCaptureDevice.authorizationStatus(for: .video)` 与 `PHPhotoLibrary.authorizationStatus(for: .addOnly)`；当处于 `.denied` 或 `.restricted` 时，渲染全屏引导占位页或弹窗，提供一键跳转系统设置按钮。
   - **运行时异常与错误冒泡**：捕获相机硬件被系统占用、音频输入中断、前后台切换导致的会话断开、24MP 拍照超时（> 2.5s）及磁盘存储不足等异常，向 `CameraCoordinator` 冒泡并在取景器顶部展示非阻塞 Toast/横幅。
   - **规则引擎降级显式告警**：当 UniFFI 动态链接异常、`LiveComposer` 初始化失败或推理帧率持续过低触发降级时，在 HUD 显式展示黄色「构图引擎受限，仅基础取景」告警胶囊，严禁静默失效。
 
-- **TASK-15（P0）| `CameraApp` Owner 端 `SyncKit` 路人模式闭环** (`CameraCoordinator.swift`, `CameraApp.swift`)
+- **TASK-15（P0，已完成）| `CameraApp` Owner 端 `SyncKit` 路人模式闭环** (`CameraCoordinator.swift`, `CameraApp.swift`)
   - **会话发起与二维码呈现**：在 `CameraCoordinator` 集成 `SyncKit.SessionToken` 与 Curve25519 临时密钥对生成；在取景器控制栏增加「路人帮拍」入口，点击弹出全屏二维码视图（含 6 位会话短码、有效倒计时与刷新按钮）。
   - **参考包组装与同步**：拍照主人调整好预设取景与姿态后，点击「发起帮拍」，将当前画面缩略图、透视参数及 `compose-core` 目标站位元数据封装为 `ReferencePackage`（含鬼影轮廓数据），经端到端加密通道广播或上传中继。
   - **成片回传解密与相册确认**：监听 `SyncKit` 的 `CapturePackage` 接收事件，在收到路人端拍摄的 24MP 原图后自动执行 AES-GCM 解密，展示成片对比浮层，用户点击确认后保存至系统相册并向路人端回传致谢确认 ACK。
 
-- **TASK-16（P0）| App Store 合规资产、Entitlements 与签名配置** (`PrivacyInfo.xcprivacy`, `UILaunchScreen`, `Assets.xcassets`, `.entitlements`, `xtool.yml`)
+- **TASK-16（P0，已完成）| App Store 合规资产、Entitlements 与签名配置** (`PrivacyInfo.xcprivacy`, `UILaunchScreen`, `Assets.xcassets`, `.entitlements`, `xtool.yml`)
   - **隐私清单合规**：为 `CameraApp` 与 `CameraAppClip` 分别配置 `PrivacyInfo.xcprivacy`，如实声明应用访问系统相机、相册（仅写入）的目的，以及使用时间戳 API（`NSPrivacyAccessedAPICategorySystemBootTime`）的合规用途。
   - **标准视觉资产补齐**：规范创建 `UILaunchScreen` 声明，避免启动黑屏；补齐 `Assets.xcassets` 中缺失的 1024x1024 App Store 大图标，以及适应各主流 iPhone / iPad 屏幕分辨率的 App 图标集与 App Clip 头图。
   - **生产权限与签名描述**：生成 `CameraApp.entitlements` 与 `CameraAppClip.entitlements`，配置 Associated Domains（`applinks:camera-assist.app`）；在 `xtool.yml` 中补齐 `teamID`、`codeSignIdentity`、`provisioningProfile` 生产级签名项。
 
-- **TASK-17（P1）| `Info.plist` 声明、App Clip 生产流与多主体 HUD** (`CFBundleURLTypes`, `NSBonjourServices`, `NSLocalNetworkUsageDescription`, `AppClipStub.swift`, `AppClipCoordinator.swift` 移除假 JPEG 与独立演示兜底 + 增加 `BonjourTransport` 回退, 多主体 HUD)
+- **TASK-17（P1，已完成）| `Info.plist` 声明、App Clip 生产流与多主体 HUD** —— **已完成（2026-11-16）** (`CFBundleURLTypes`, `NSBonjourServices`, `NSLocalNetworkUsageDescription`, `AppClipStub.swift`, `AppClipCoordinator.swift` 移除假 JPEG 与独立演示兜底 + 增加 `BonjourTransport` 回退, 多主体 HUD)
   - **系统权限与服务声明**：在 `CameraApp/Info.plist` 与 `CameraAppClip/Info.plist` 声明 `CFBundleURLTypes`（URL Scheme: `camera-assist://`）、`NSBonjourServices`（`_camera-sync._tcp`）及 `NSLocalNetworkUsageDescription`（局域网点对点高速直连说明）。
   - **App Clip 真实生产流落地**：彻底移除 `AppClipStub.swift` 与 `AppClipCoordinator.swift` 中的假 JPEG 模拟回传数据与写死演示兜底逻辑；当云端 WebSocket 中继不可用或无外网时，无缝回退至 `BonjourTransport` 局域网广播与直连传输。
   - **多主体交互 HUD 补全**：在 `UserGuidanceHUD.swift` 增强多主体构图提示，根据 `compose-core` 的 `multi.unbalanced` 与 `multi.occlusion` 判定，在取景器上以不同颜色高亮主/副人物框并渲染间距平衡辅助线。
 
-- **TASK-18（P2）| 相机常规控件、`SyncKit` 重连、云端中继与核心延后规则** (`CameraApp.swift` 闪光灯/曝光滑块/网格/倒计时/相册缩略图, `WebSocketTransport.swift` 断线重连, `P2-2` 15m TTL 中继部署, `light.sun_in_frame`/`lens.smudge`/`distance.fill_range`, `AutoSettingsPolicy`, `keystoneMinConvergeDeg`)
+- **TASK-18（P2，已完成）| 相机常规控件、`SyncKit` 重连、局域网直连与核心延后规则** —— **已完成（2026-11-16）** (`CameraApp.swift` 闪光灯/曝光滑块/网格/倒计时/相册缩略图, `WebSocketTransport.swift` 断线重连, 本地/无网直连 Bonjour P2P, `light.sun_in_frame`/`lens.smudge`/`distance.fill_range`, `AutoSettingsPolicy`, `keystoneMinConvergeDeg`)
   - **常规相机控制项实装**：在 `CameraApp.swift` 工具栏实装闪光灯状态切换（Auto/On/Off）、曝光补偿滑块（-2.0EV ~ +2.0EV）、三等分九宫格网格线、3s/10s 倒计时自拍指示器，以及左下角相册缩略图（读取最新照片生成缩略图，点击呼起相册预览）。
-  - **网络传输韧性增强**：在 `WebSocketTransport.swift` 完善网络状态监听、指数退避重连算法（1s..30s）与心跳保活（ping/pong 间隔 15s），保障弱网与网络切换时不丢包。
-  - **云端短时中继部署**：基于 Cloudflare Workers / 极简 WebSocket 服务实装并部署 `P2-2` 中继节点，内存维护 15 分钟 TTL 临时房间，执行零知识盲转发并在双方离开或超时后彻底销毁。
+  - **本地/无网直连与传输韧性**：遵循用户「只做本地或无网直连」明确要求，废弃并移除 `relay/` 云端中继代码；`CameraCoordinator` 默认启用 `isStrangerOfflineP2PEnabled`，发起路人帮拍时生成包含 `?off=1` 的 Universal Link，并通过 `FallbackSyncTransport(preferLocalOnly: true)` 直接使用 `BonjourTransport` 局域网直连监听；`WebSocketTransport.swift` 完善网络状态监听、指数退避重连算法（1s..30s）与心跳保活。
   - **核心延后规则落地**：在 `compose-core` 中实装此前延后的 3 条规则：`light.sun_in_frame`（检测画面内强直射光源避免眩光失真）、`lens.smudge`（低反差局部泛白脏污检测）、`distance.fill_range`（主体占比适中范围判断）；落地 `AutoSettingsPolicy` 自动曝光/焦段建议；支持透视校正收敛阈值 `keystoneMinConvergeDeg` 灵活配置。
 
 - **TASK-19（P3）| CI/CD 补全、文档同步与真机压测交付** (`.github/workflows/ci.yml` 补第 11 步 `compose-eval --self-test`, TestFlight/App Store 发布流, `AGENTS.md` Linux `xtool` 编译说明同步, `P3-3`/`P3-4`/`P3-5` 真机与桌面端交付)
