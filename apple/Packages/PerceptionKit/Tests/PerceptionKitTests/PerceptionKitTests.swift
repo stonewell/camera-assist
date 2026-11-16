@@ -185,9 +185,9 @@ final class PerceptionKitTests: XCTestCase {
             if tasks.runLumaProbe { lumaCount += 1 }
         }
 
-        // At nominal: 15Hz pose in 2s -> 30, 8Hz mask in 2s -> 16, 10Hz face in 2s -> 20, 4Hz luma in 2s -> 8
+        // At nominal: 15Hz pose in 2s -> 30, 8Hz mask in 2s -> 15 (every 8 frames in 0..<120), 10Hz face in 2s -> 20, 4Hz luma in 2s -> 8
         XCTAssertEqual(poseCount, 30)
-        XCTAssertEqual(maskCount, 16)
+        XCTAssertEqual(maskCount, 15)
         XCTAssertEqual(faceCount, 20)
         XCTAssertEqual(lumaCount, 8)
 
@@ -352,7 +352,7 @@ final class PerceptionKitTests: XCTestCase {
         XCTAssertEqual(processor.telemetry.poseExecutionCount, 2)
         XCTAssertEqual(processor.telemetry.faceExecutionCount, 1)
         XCTAssertEqual(bundle2.frame.subjects.count, 1)
-        XCTAssertEqual(bundle2.frame.subjects[0].bounds.x, 0.38, accuracy: 0.01)
+        XCTAssertEqual(bundle2.frame.subjects[0].bounds.x, 0.26, accuracy: 0.01)
 
         // Verify subsequent 10Hz face cadence continues to run because lastPoseFoundSubject is decoupled from lastSubjects
         processor.fallbackFaceBoxes = [NormalizedBox(x: 0.40, y: 0.20, width: 0.22, height: 0.22)]
@@ -367,7 +367,7 @@ final class PerceptionKitTests: XCTestCase {
 
         XCTAssertEqual(processor.telemetry.faceExecutionCount, 2)
         XCTAssertEqual(bundle3.frame.subjects.count, 1)
-        XCTAssertEqual(bundle3.frame.subjects[0].bounds.x, 0.40, accuracy: 0.01)
+        XCTAssertEqual(bundle3.frame.subjects[0].bounds.x, 0.29, accuracy: 0.01)
 
         // Verify clearing face fallback clears stale subjects when body pose remains empty
         processor.fallbackFaceBoxes = []
