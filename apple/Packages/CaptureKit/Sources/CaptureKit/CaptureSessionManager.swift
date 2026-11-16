@@ -654,12 +654,14 @@ extension CaptureSessionManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 
     private func extractMetadata(from sampleBuffer: CMSampleBuffer) -> CameraFrameMetadata {
+        #if os(iOS) || targetEnvironment(macCatalyst)
         var iso: Float = activeDevice?.iso ?? 100.0
         var shutterSec: Double = activeDevice.map { CMTimeGetSeconds($0.exposureDuration) } ?? (1.0 / 60.0)
-        #if os(iOS) || targetEnvironment(macCatalyst)
         var aperture: Float = activeDevice?.lensAperture ?? 1.8
         let hfov: Float = activeDevice?.activeFormat.videoFieldOfView ?? 73.7
         #else
+        var iso: Float = 100.0
+        var shutterSec: Double = 1.0 / 60.0
         var aperture: Float = 1.8
         let hfov: Float = 73.7
         #endif
