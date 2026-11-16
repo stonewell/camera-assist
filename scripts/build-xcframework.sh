@@ -104,17 +104,67 @@ if [[ "${OS_NAME}" == "Darwin" ]]; then
 
     echo "✓ ComposeCore.xcframework assembled successfully in ${FRAMEWORKS_DIR}/ComposeCore.xcframework"
 else
-    echo "==> Running in Linux/CI environment: performing cross-compilation dry-run & static validation."
-    (cd "${CORE_DIR}" && cargo build --release -p compose-ffi --lib)
-    
-    # Verify generated C headers and modulemap exist
-    if [[ -f "${GENERATED_DIR}/compose_ffiFFI.h" && -f "${GENERATED_DIR}/compose_ffi.swift" ]]; then
-        echo "✓ Headers and Swift bindings validated for cross-compilation."
-    else
-        echo "Error: Missing generated headers or Swift bindings in ${GENERATED_DIR}" >&2
+    echo "==> Running in Linux/CI environment: building aarch64-apple-ios staticlib and assembling XCFramework."
+    if command -v rustup >/dev/null 2>&1; then
+        rustup target add aarch64-apple-ios || true
+    fi
+
+    echo "--> Building staticlib for aarch64-apple-ios..."
+    (cd "${CORE_DIR}" && cargo rustc --target aarch64-apple-ios -p compose-ffi --release --lib --crate-type staticlib)
+
+    IOS_LIB="${CORE_DIR}/target/aarch64-apple-ios/release/libcompose_ffi.a"
+    if [[ ! -f "${IOS_LIB}" ]]; then
+        echo "Error: Expected static library not found at ${IOS_LIB}" >&2
         exit 1
     fi
-    echo "✓ Local non-Darwin validation passed. (Full XCFramework signing occurs in macOS CI runner)."
+
+    # Verify generated C headers and modulemap exist
+    if [[ ! -f "${GENERATED_DIR}/compose_ffiFFI.h" || ! -f "${GENERATED_DIR}/compose_ffiFFI.modulemap" ]]; then
+        echo "Error: Missing generated C headers or modulemap in ${GENERATED_DIR}" >&2
+        exit 1
+    fi
+
+    XCF_DIR="${FRAMEWORKS_DIR}/ComposeCore.xcframework"
+    rm -rf "${XCF_DIR}"
+    mkdir -p "${XCF_DIR}/ios-arm64/Headers"
+
+    cp "${IOS_LIB}" "${XCF_DIR}/ios-arm64/libcompose_ffi.a"
+    cp "${GENERATED_DIR}/compose_ffiFFI.h" "${XCF_DIR}/ios-arm64/Headers/compose_ffiFFI.h"
+    cp "${GENERATED_DIR}/compose_ffiFFI.modulemap" "${XCF_DIR}/ios-arm64/Headers/module.modulemap"
+
+    cat << 'EOF' > "${XCF_DIR}/Info.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AvailableLibraries</key>
+	<array>
+		<dict>
+			<key>BinaryPath</key>
+			<string>libcompose_ffi.a</string>
+			<key>HeadersPath</key>
+			<string>Headers</string>
+			<key>LibraryIdentifier</key>
+			<string>ios-arm64</string>
+			<key>LibraryPath</key>
+			<string>libcompose_ffi.a</string>
+			<key>SupportedArchitectures</key>
+			<array>
+				<string>arm64</string>
+			</array>
+			<key>SupportedPlatform</key>
+			<string>ios</string>
+		</dict>
+	</array>
+	<key>CFBundlePackageType</key>
+	<string>XFWK</string>
+	<key>XCFrameworkFormatVersion</key>
+	<string>1.0</string>
+</dict>
+</plist>
+EOF
+
+    echo "✓ ComposeCore.xcframework assembled successfully in ${XCF_DIR}"
 fi
 
 echo "=================================================================="

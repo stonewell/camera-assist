@@ -11,15 +11,8 @@ rust-ios-sim:
 generate-bindings:
 	./scripts/generate-uniffi-bindings.sh
 
-# TASK-01: ComposeKit links this XCFramework as a local binary target. Assembling it needs
-# Xcode, so on non-Darwin hosts fail loudly instead of building a ComposeKit that cannot compile.
+# ComposeKit links this XCFramework as a local binary target.
 xcframework:
-	@if [ "$$(uname -s)" != "Darwin" ]; then \
-		echo "error: ComposeCore.xcframework can only be assembled on macOS with Xcode." >&2; \
-		echo "       ComposeKit will NOT compile without it (no mock fallback)." >&2; \
-		echo "       On Linux run 'make verify' for the structural parity gate instead." >&2; \
-		exit 1; \
-	fi
 	./scripts/build-xcframework.sh
 
 # Backwards-compatible alias; keep both entry points behaving identically.

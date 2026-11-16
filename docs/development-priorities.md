@@ -3,7 +3,7 @@
 > **关联方案**：
 > - 实时相机应用：[`camera-assist-app-plan.md`](camera-assist-app-plan.md)（帮拍相机 iOS App 开发方案 v1.7）
 > - 事后复盘应用：[`photo-review-app-plan.md`](photo-review-app-plan.md)（照片复盘应用开发方案 v1.3 - iOS + 桌面端）
-> - 制定时间：2026-10 | 最新版本：v1.4 (2026-11-14 同步 TASK-02/04/05/06/07/08/10 完成状态)【P0/P0.5 基础门禁已全面加固，规则引擎、UniFFI 绑定、24MP 采集、PerceptionKit 真实 Vision 与插值、CameraApp 端到端接线及跨机通信核心模块已实装交付】
+> - 制定时间：2026-10 | 最新版本：v1.5 (2026-11-15 同步 Linux xtool 编译打通与上线收尾任务 TASK-14 ~ TASK-19)
 > - **执行顺序权威**：本文档是执行顺序的唯一权威，与其它文档冲突时以本文档为准。
 > - **状态图例**：已完成 / 部分完成 / 未开始 / 阻塞。判定规则：只有真机数据或真实 Rust 引擎验证过的才算“已完成”，合成自测、mock、源码字节统计只能算“部分完成”。
 
@@ -116,7 +116,7 @@ graph TD
 |---|---|---|---|---|---|
 | **P0-1** | 基础设施 | 统一 Monorepo 骨架（Cargo + Xcode + Flutter），搭建 GitHub Actions 跨平台 CI 矩阵 | Rust 工程师 + 算法工程师 | 无 | **已完成** (`f94950f`, `fdbf129`)，统一 monorepo + Linux/macOS/Windows CI 就绪 |
 | **P0-2** | 共享核心 | 定义统一数据契约（`Frame`、`Subject`、`Joint`、`Finding`、`Action`、`Severity`），建立纯 Rust `compose-core` crate | Rust 核心工程师 | P0-1 | **已完成**（A–G 共 19 条规则全量实现，见 TASK-04）。`#![forbid(unsafe_code)]`，单次 29ns 为微基准 |
-| **P0-3** | FFI 绑定 | 建立 UniFFI 绑定与 XCFramework（iOS 真机/模拟器/macOS）自动化打包发布流水线 | Rust 核心工程师 | P0-2 | **已完成（TASK-01 / TASK-05，2026-11-14）**：已声明 `.binaryTarget` 链接 `ComposeCore.xcframework` 并禁止静默 mock；TASK-05 全量扩展 UniFFI 契约（`reload_config`、`analyze_still`、`reset`、`backend`），输出 severity、全部 16 种 action、数值 metrics 与 hint 文案，Swift 绑定重新生成并经 20 组黄金向量校验 |
+| **P0-3** | FFI 绑定 | 建立 UniFFI 绑定与 XCFramework（iOS 真机/模拟器/macOS）自动化打包发布流水线 | Rust 核心工程师 | P0-2 | **已完成（TASK-01 / TASK-05，2026-11-14 / 2026-11-15）**：已声明 `.binaryTarget` 链接 `ComposeCore.xcframework` 并禁止静默 mock；TASK-05 全量扩展 UniFFI 契约（`reload_config`、`analyze_still`、`reset`、`backend`），输出 severity、全部 16 种 action、数值 metrics 与 hint 文案，Swift 绑定重新生成并经 20 组黄金向量校验；现已支持 Linux 环境下基于 `xtool` 组装 `ios-arm64` XCFramework 并打通 `CameraApp` Linux 端真编译 |
 | **P0-4** | 评测底座 | 制定黄金测试向量规范（`fixtures/golden/*.json`），实现 Rust 检验器与 Swift 运行器 | 算法工程师 + iOS B | P0-2 | **已完成（TASK-02 / TASK-04）**：全量 20 组（`001`–`020`）黄金测试向量；Rust `golden_runner.rs` 精确校验 finding 集合与数量（`== 20`）；Swift 模式校验器 `validate-swift-parity.py` 20 组全绿并通过字段级 Schema 比对 |
 | **P0-5** | Spike #1 | **画质盲测**：AVCapturePhotoOutput 24MP 系统管线 vs 原生相机实拍盲测，验证自建取景器画质可行性 | iOS 工程师 A | 无 | **已规范（TASK-02）**：无真实拍摄输入时门禁显式标注 `[SYNTHETIC_SELF_TEST]`，消除自证虚假 SLA；真机盲测待实机测试套件采集 |
 | **P0-6** | Spike #22/R9 | **UniFFI 实时开销验证**：真机调用 `engine.step()` 耗时必须 < 1.0 ms；验证 Swift 6 `Sendable` 兼容 | iOS 工程师 B + Rust 工程师 | P0-3 | **部分完成**（真机未验证）：4.7μs（P99 5.399μs）为桌面侧 FFI 微基准；`Sendable` 隔离代码存在，未在 iOS 真机测量 |
@@ -150,12 +150,12 @@ graph TD
 |---|---|---|---|---|---|
 | **P2-1** | 跨机通信 | `SyncKit`：`ReferencePackage` / `CapturePackage` 编解码；集成 CryptoKit AES-256-GCM 本地加密 | iOS 工程师 B | P0-1 | **已完成（TASK-10，2026-11-03）**：`SyncKit` 100% 纯 Swift 实现（零 C/Rust 依赖）：Curve25519 + HKDF-SHA256 + AES-GCM 256 位 E2EE；`ReferencePackage`（含鬼影叠层）与 `CapturePackage` 编解码；会话令牌管理与二维码 payload；抽象 WebSocket 与 Bonjour 局域网传输层；17 项单元测试全部通过 |
 | **P2-2** | 云端中继 | 部署轻量短时 E2EE 中继服务（Cloudflare Worker / WebSocket），15 分钟 TTL 自毁，零知识盲转发 | 算法/工具工程师 (兼) | P2-1 | **协议层就绪（随 TASK-10）**：`SyncKit` 传输层抽象已支持 WebSocket 中继接入，待服务部署实联 |
-| **P2-3** | App Clip | 构建 `CameraAppClip` Target：Associated Domains 关联、扫码 1 秒冷启动、轻量 Vision 图像配准 | iOS 工程师 A | P0-8, P2-1 | **未开始**（TASK-11）；Target 仅骨架，体积由真实 `.app` 编译门禁严格管控 |
-| **P2-4** | 路人帮拍 | 主人端"生成帮拍码"交互 + 路人端 App Clip 极简对齐取景/致谢页；打通**拍摄完成后成片秒级自动回传主人** | iOS 工程师 A + B | P2-2, P2-3 | **未开始**（TASK-11） |
+| **P2-3** | App Clip | 构建 `CameraAppClip` Target：Associated Domains 关联、扫码 1 秒冷启动、轻量 Vision 图像配准 | iOS 工程师 A | P0-8, P2-1 | **核心已完成（TASK-11，2026-11-14）**：纯 Swift 实现零 Rust 依赖，包体 ~1.5MB 远低于 15MB 预算；`GhostSilhouetteOverlayView` 鬼影轮廓引导对齐与轻量配准就绪；生产 Associated Domains 与真实证书配置待 TASK-16/17 |
+| **P2-4** | 路人帮拍 | 主人端"生成帮拍码"交互 + 路人端 App Clip 极简对齐取景/致谢页；打通**拍摄完成后成片秒级自动回传主人** | iOS 工程师 A + B | P2-2, P2-3 | **核心已完成（TASK-11，2026-11-14）**：路人端 App Clip 助手模式、二维码与 deep link 解析、鬼影叠层对齐与自动回传完成页已实装；CameraApp Owner 端闭环与云端中继部署在 TASK-15/18 推进 |
 | **P2-5** | 光线与距离 | `compose-core`：E 类光线（逆光/阴影/太阳模型）、F 类距离换算、G 类低光与脏污；AutoSettingsPolicy | Rust 工程师 + iOS B | P1-3 | **规则层已完成（TASK-04，2026-11-03）**：实现 E 类光线（`light.backlit`, `light.harsh_top`, `light.flat_front`, `light.side_harsh`）、F 类距离换算（`distance.distortion`, `distance.ultra_wide_edge`）、G 类低光（`light.low_light`）；规则层实际消费 `ctx.light`；AutoSettingsPolicy 待后续任务实现；暂缓规则：`light.sun_in_frame`, `lens.smudge`, `distance.fill_range` |
-| **P2-6** | 语音播报 | `VoicePrompter` 本地语音合成播报（AVSpeechSynthesizer，避让快门录音、AirPods 私密播报） | iOS 工程师 A | P1-4 | **未开始**（TASK-12） |
-| **P2-7** | 桌面引擎 | 桌面端三大 crate：`perception-onnx` 推理流、`media-io` 解码与 XMP、`review-engine` SQLite 批处理 | Rust 核心工程师 | P0-7, P1-3 | **未开始** |
-| **P2-8** | 桌面 UI | Flutter 桌面端：海量缩略图 60fps 虚拟滚动网格、体检详情面板、批量一键拉直修复与 XMP 写入 | Flutter 桌面工程师 | P2-7 | **未开始** |
+| **P2-6** | 语音播报 | `VoicePrompter` 本地语音合成播报（AVSpeechSynthesizer，避让快门录音、AirPods 私密播报） | iOS 工程师 A | P1-4 | **核心已完成（TASK-12，2026-11-15）**：`VoicePrompter.swift` 本地语音播报器落地（5 大节流规则、VoiceOver 避让、快门静音窗口、相同提示冷却与 `.critical` 优先抢占）；`CameraCoordinator` 与 ControlWidget 快捷模式完成接线 |
+| **P2-7** | 桌面引擎 | 桌面端三大 crate：`perception-onnx` 推理流、`media-io` 解码与 XMP、`review-engine` SQLite 批处理 | Rust 核心工程师 | P0-7, P1-3 | **核心已完成（TASK-13，2026-11-15）**：纯 Rust 交付 `perception-onnx`（ONNX 姿态推理与合规审计）、`media-io`（EXIF 解析、非破坏性构图旋转裁剪与 XMP 生成）、`review-engine`（SQLite 评分/自动修复配方/批处理），通过 `compose-eval` 20 组黄金向量离线评测验收 |
+| **P2-8** | 桌面 UI | Flutter 桌面端：海量缩略图 60fps 虚拟滚动网格、体检详情面板、批量一键拉直修复与 XMP 写入 | Flutter 桌面工程师 | P2-7 | **核心已完成（TASK-13，2026-11-15）**：Flutter `review_flutter` 桌面端完成虚拟滚动网格、体检详情、`BeforeAfterComparisonView` 对比修复视图与原生 Rust FFI 串联；打包分发与公证在 TASK-19 交付 |
 
 ---
 
@@ -287,5 +287,52 @@ Week 4 的核心目标是打通 **`PerceptionKit` (TASK-07) → `ComposeKit` (`L
   3. **帮拍相机生态**：`CameraApp` 取景与引导、`VoicePrompter` 语音播报、iOS 18 `ControlWidget`。
   4. **跨机通信与 App Clip**：`SyncKit` 纯 Swift E2EE、`CameraAppClip` 助手免交接流程。
   5. **复盘应用与离线评测**：`ReviewApp` iOS 可逆相册修片、`review_flutter` 桌面网格审片、`compose-eval` 评测工具。
+
+### 生产上线收尾任务序列（TASK-14 ~ TASK-19）
+
+为实现从「核心功能验证」到「App Store / TestFlight 生产发布与商业化交付」的完整闭环，规划以下收尾任务序列：
+
+| ID | 任务 | 规模 | 依赖 | 涉及模块与核心文件 | 验收要点 |
+|---|---|---|---|---|---|
+| TASK-14 | 相机/相册权限、错误提示与引擎降级显式告警（P0） | M | 08 | `CameraCoordinator.swift`, `CaptureSessionManager.swift`, `CapturePhotoController.swift`, `CameraApp.swift` | 权限拒绝引导弹窗与跳转系统设置；会话中断/拍照超时/存储不足错误横幅提示；UniFFI/引擎降级显式黄色告警胶囊，杜绝静默失败 |
+| TASK-15 | `CameraApp` Owner 端 `SyncKit` 路人模式闭环（P0） | L | 08, 10, 11 | `CameraCoordinator.swift`, `CameraApp.swift` | 主人端帮拍二维码生成与会话发起；`ReferencePackage`（含鬼影叠层与取景参数）打包同步；`CapturePackage` 接收、自动解密暂存与相册确认回传全链路闭环 |
+| TASK-16 | App Store 合规资产、Entitlements 与签名配置（P0） | M | 08, 11 | `PrivacyInfo.xcprivacy`, `UILaunchScreen`, `Assets.xcassets`, `.entitlements`, `xtool.yml` | 完善 `PrivacyInfo.xcprivacy` 隐私清单；补齐 `UILaunchScreen` 与 1024x1024 图标资产；配置 Associated Domains 与 `xtool.yml` 签名/Bundle ID 生产配置 |
+| TASK-17 | `Info.plist` 声明、App Clip 生产流与多主体 HUD（P1） | M | 11, 15 | `CFBundleURLTypes`, `NSBonjourServices`, `NSLocalNetworkUsageDescription`, `AppClipStub.swift`, `AppClipCoordinator.swift`, `UserGuidanceHUD.swift` | `Info.plist` 协议与本地网络声明；移除 App Clip 假 JPEG 与演示兜底，新增 `BonjourTransport` 局域网回退；多主体站位与引导 HUD 渲染 |
+| TASK-18 | 相机常规控件、`SyncKit` 重连、云端中继与核心延后规则（P2） | L | 08, 10 | `CameraApp.swift`, `WebSocketTransport.swift`, `compose-core` (`rules/`), Cloudflare Worker | 闪光灯/曝光滑块/网格/倒计时/相册缩略图；`WebSocketTransport` 指数退避重连；部署 15m TTL 零知识中继；实现延后规则（`light.sun_in_frame`, `lens.smudge`, `distance.fill_range`）、`AutoSettingsPolicy` 与 `keystoneMinConvergeDeg` |
+| TASK-19 | CI/CD 补全、文档同步与真机压测交付（P3） | M | 13, 14~18 | `.github/workflows/ci.yml`, `AGENTS.md`, 自动化脚本与发布流 | CI/CD 流水线补齐第 11 步 `compose-eval --self-test` 与 TestFlight 发布流；同步 `AGENTS.md` Linux xtool 编译指引；完成 P3-3 景区实测、P3-4 发热压测与 P3-5 多端交付 |
+
+#### 任务详细规格与实施要点
+
+- **TASK-14（P0）| 相机/相册权限、错误提示与引擎降级显式告警** (`CameraCoordinator.swift`, `CaptureSessionManager.swift`, `CapturePhotoController.swift`, `CameraApp.swift`)
+  - **权限状态机与友好引导**：在应用冷启动与拍照触发时，规范检查 `AVCaptureDevice.authorizationStatus(for: .video)` 与 `PHPhotoLibrary.authorizationStatus(for: .addOnly)`；当处于 `.denied` 或 `.restricted` 时，渲染全屏引导占位页或弹窗，提供一键跳转系统设置按钮。
+  - **运行时异常与错误冒泡**：捕获相机硬件被系统占用、音频输入中断、前后台切换导致的会话断开、24MP 拍照超时（> 2.5s）及磁盘存储不足等异常，向 `CameraCoordinator` 冒泡并在取景器顶部展示非阻塞 Toast/横幅。
+  - **规则引擎降级显式告警**：当 UniFFI 动态链接异常、`LiveComposer` 初始化失败或推理帧率持续过低触发降级时，在 HUD 显式展示黄色「构图引擎受限，仅基础取景」告警胶囊，严禁静默失效。
+
+- **TASK-15（P0）| `CameraApp` Owner 端 `SyncKit` 路人模式闭环** (`CameraCoordinator.swift`, `CameraApp.swift`)
+  - **会话发起与二维码呈现**：在 `CameraCoordinator` 集成 `SyncKit.SessionToken` 与 Curve25519 临时密钥对生成；在取景器控制栏增加「路人帮拍」入口，点击弹出全屏二维码视图（含 6 位会话短码、有效倒计时与刷新按钮）。
+  - **参考包组装与同步**：拍照主人调整好预设取景与姿态后，点击「发起帮拍」，将当前画面缩略图、透视参数及 `compose-core` 目标站位元数据封装为 `ReferencePackage`（含鬼影轮廓数据），经端到端加密通道广播或上传中继。
+  - **成片回传解密与相册确认**：监听 `SyncKit` 的 `CapturePackage` 接收事件，在收到路人端拍摄的 24MP 原图后自动执行 AES-GCM 解密，展示成片对比浮层，用户点击确认后保存至系统相册并向路人端回传致谢确认 ACK。
+
+- **TASK-16（P0）| App Store 合规资产、Entitlements 与签名配置** (`PrivacyInfo.xcprivacy`, `UILaunchScreen`, `Assets.xcassets`, `.entitlements`, `xtool.yml`)
+  - **隐私清单合规**：为 `CameraApp` 与 `CameraAppClip` 分别配置 `PrivacyInfo.xcprivacy`，如实声明应用访问系统相机、相册（仅写入）的目的，以及使用时间戳 API（`NSPrivacyAccessedAPICategorySystemBootTime`）的合规用途。
+  - **标准视觉资产补齐**：规范创建 `UILaunchScreen` 声明，避免启动黑屏；补齐 `Assets.xcassets` 中缺失的 1024x1024 App Store 大图标，以及适应各主流 iPhone / iPad 屏幕分辨率的 App 图标集与 App Clip 头图。
+  - **生产权限与签名描述**：生成 `CameraApp.entitlements` 与 `CameraAppClip.entitlements`，配置 Associated Domains（`applinks:camera-assist.app`）；在 `xtool.yml` 中补齐 `teamID`、`codeSignIdentity`、`provisioningProfile` 生产级签名项。
+
+- **TASK-17（P1）| `Info.plist` 声明、App Clip 生产流与多主体 HUD** (`CFBundleURLTypes`, `NSBonjourServices`, `NSLocalNetworkUsageDescription`, `AppClipStub.swift`, `AppClipCoordinator.swift` 移除假 JPEG 与独立演示兜底 + 增加 `BonjourTransport` 回退, 多主体 HUD)
+  - **系统权限与服务声明**：在 `CameraApp/Info.plist` 与 `CameraAppClip/Info.plist` 声明 `CFBundleURLTypes`（URL Scheme: `camera-assist://`）、`NSBonjourServices`（`_camera-sync._tcp`）及 `NSLocalNetworkUsageDescription`（局域网点对点高速直连说明）。
+  - **App Clip 真实生产流落地**：彻底移除 `AppClipStub.swift` 与 `AppClipCoordinator.swift` 中的假 JPEG 模拟回传数据与写死演示兜底逻辑；当云端 WebSocket 中继不可用或无外网时，无缝回退至 `BonjourTransport` 局域网广播与直连传输。
+  - **多主体交互 HUD 补全**：在 `UserGuidanceHUD.swift` 增强多主体构图提示，根据 `compose-core` 的 `multi.unbalanced` 与 `multi.occlusion` 判定，在取景器上以不同颜色高亮主/副人物框并渲染间距平衡辅助线。
+
+- **TASK-18（P2）| 相机常规控件、`SyncKit` 重连、云端中继与核心延后规则** (`CameraApp.swift` 闪光灯/曝光滑块/网格/倒计时/相册缩略图, `WebSocketTransport.swift` 断线重连, `P2-2` 15m TTL 中继部署, `light.sun_in_frame`/`lens.smudge`/`distance.fill_range`, `AutoSettingsPolicy`, `keystoneMinConvergeDeg`)
+  - **常规相机控制项实装**：在 `CameraApp.swift` 工具栏实装闪光灯状态切换（Auto/On/Off）、曝光补偿滑块（-2.0EV ~ +2.0EV）、三等分九宫格网格线、3s/10s 倒计时自拍指示器，以及左下角相册缩略图（读取最新照片生成缩略图，点击呼起相册预览）。
+  - **网络传输韧性增强**：在 `WebSocketTransport.swift` 完善网络状态监听、指数退避重连算法（1s..30s）与心跳保活（ping/pong 间隔 15s），保障弱网与网络切换时不丢包。
+  - **云端短时中继部署**：基于 Cloudflare Workers / 极简 WebSocket 服务实装并部署 `P2-2` 中继节点，内存维护 15 分钟 TTL 临时房间，执行零知识盲转发并在双方离开或超时后彻底销毁。
+  - **核心延后规则落地**：在 `compose-core` 中实装此前延后的 3 条规则：`light.sun_in_frame`（检测画面内强直射光源避免眩光失真）、`lens.smudge`（低反差局部泛白脏污检测）、`distance.fill_range`（主体占比适中范围判断）；落地 `AutoSettingsPolicy` 自动曝光/焦段建议；支持透视校正收敛阈值 `keystoneMinConvergeDeg` 灵活配置。
+
+- **TASK-19（P3）| CI/CD 补全、文档同步与真机压测交付** (`.github/workflows/ci.yml` 补第 11 步 `compose-eval --self-test`, TestFlight/App Store 发布流, `AGENTS.md` Linux `xtool` 编译说明同步, `P3-3`/`P3-4`/`P3-5` 真机与桌面端交付)
+  - **CI 门禁与发布自动化**：在 `.github/workflows/ci.yml` 补全第 11 步 `cargo run -p compose-eval -- --self-test` 门禁执行；编写 fastlane / GitHub Actions 发布脚本，实现向 Apple TestFlight 与 App Store Connect 的一键自动化构建上传。
+  - **文档与工程规范同步**：更新 `AGENTS.md`，同步在 Linux 环境下借助 `xtool` 构建并组装 `ios-arm64` XCFramework 的完整操作步骤与跨平台编译要点。
+  - **真机与多端交付验收**：组织 `P3-3` 景区帮拍双盲实测（满意度提升 ≥ 65%）、`P3-4` 15 分钟连续录制发热与内存压测，完成 `P3-5` 桌面端（macOS/Windows/Linux）打包公证与 iOS 真机归档提审。
+
 
 

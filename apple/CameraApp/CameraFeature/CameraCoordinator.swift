@@ -130,13 +130,14 @@ public final class CameraCoordinator: ObservableObject {
         bodyPoseAnalyzer: BodyPoseAnalyzer = BodyPoseAnalyzer(),
         visionProcessor: VisionFrameProcessor? = nil,
         composer: LiveComposer? = nil,
-        voicePrompter: VoicePrompter = VoicePrompter()
+        voicePrompter: VoicePrompter? = nil
     ) {
         self.sessionManager = sessionManager
         self.photoController = photoController
         self.attitudeTracker = attitudeTracker
-        self.voicePrompter = voicePrompter
-        self.isVoiceEnabled = voicePrompter.isEnabled
+        let resolvedVoicePrompter = voicePrompter ?? VoicePrompter()
+        self.voicePrompter = resolvedVoicePrompter
+        self.isVoiceEnabled = resolvedVoicePrompter.isEnabled
 
         let resolvedSyncHub = syncHub ?? FrameSyncHub(attitudeTracker: attitudeTracker)
         self.syncHub = resolvedSyncHub
