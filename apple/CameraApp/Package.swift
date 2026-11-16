@@ -1,6 +1,19 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
+#if !os(macOS)
+let appExcludes = ["Assets.xcassets"]
+#else
+let appExcludes: [String] = []
+#endif
+
+var appResources: [Resource] = [
+    .process("PrivacyInfo.xcprivacy")
+]
+#if os(macOS)
+appResources.append(.process("Assets.xcassets"))
+#endif
+
 let package = Package(
     name: "CameraApp",
     platforms: [
@@ -29,6 +42,7 @@ let package = Package(
                 .product(name: "SyncKit", package: "SyncKit"),
             ],
             path: ".",
+            exclude: appExcludes,
             sources: [
                 "CameraApp.swift",
                 "CameraFeature/CameraCoordinator.swift",
@@ -36,8 +50,10 @@ let package = Package(
                 "CameraFeature/PerceptionDebugHUD.swift",
                 "CameraFeature/UserGuidanceHUD.swift",
                 "CameraFeature/VoicePrompter.swift",
-                "CameraFeature/CameraControlWidget.swift"
-            ]
+                "CameraFeature/CameraControlWidget.swift",
+                "CameraFeature/StrangerAssistView.swift"
+            ],
+            resources: appResources
         ),
     ]
 )

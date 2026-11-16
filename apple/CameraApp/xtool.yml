@@ -1,3 +1,7 @@
 version: 1
 bundleID: com.stonewell.camera-assist
 infoPath: Info.plist
+entitlementsPath: CameraApp.entitlements
+teamID: $(DEVELOPMENT_TEAM)
+codeSignIdentity: "Apple Development"
+

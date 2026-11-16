@@ -36,6 +36,8 @@ public final class HintCatalogResolver: @unchecked Sendable {
         "turn_face_to_light": ComposeHint(primary: "脸转向光线方向", secondary: "侧光过强产生阴阳脸", spoken: "脸转向光"),
         "use_night_mode": ComposeHint(primary: "开启夜景模式或移至光亮处", secondary: "环境光线过暗", spoken: "开启夜景"),
         "clean_lens": ComposeHint(primary: "请擦拭相机镜头", secondary: "镜头脏污会导致画面发雾眩光", spoken: "擦拭镜头"),
+        "multi.occlusion": ComposeHint(primary: "错开站位，避免人物遮挡", secondary: "前后人物有重叠", spoken: "错开站位"),
+        "multi.unbalanced": ComposeHint(primary: "移动镜头，居中多人站位", secondary: "人物整体偏向画面一侧", spoken: "居中站位"),
         "good": ComposeHint(primary: "构图不错，可以拍", secondary: "", spoken: "好，拍吧")
     ]
 
@@ -60,6 +62,8 @@ public final class HintCatalogResolver: @unchecked Sendable {
         "turn_face_to_light": ComposeHint(primary: "Turn face toward the light", secondary: "Harsh side light creates uneven shadows", spoken: "Face the light"),
         "use_night_mode": ComposeHint(primary: "Use Night Mode or find brighter light", secondary: "Ambient light is too dim", spoken: "Use Night Mode"),
         "clean_lens": ComposeHint(primary: "Clean your camera lens", secondary: "Smudged lens causes haze and glare", spoken: "Clean lens"),
+        "multi.occlusion": ComposeHint(primary: "Step aside to avoid overlap", secondary: "Subjects are overlapping in frame", spoken: "Avoid overlap"),
+        "multi.unbalanced": ComposeHint(primary: "Center the group in frame", secondary: "Group is positioned toward one side", spoken: "Center group"),
         "good": ComposeHint(primary: "Great composition, take the shot", secondary: "", spoken: "Ready, shoot")
     ]
 
@@ -227,6 +231,7 @@ public struct HorizonIndicatorView: View {
                 }
             }
         }
+        .allowsHitTesting(false)
     }
 }
 
@@ -433,6 +438,7 @@ public struct TargetLineOverlay: View {
                 directionalArrow(size: proxy.size)
             }
         }
+        .allowsHitTesting(false)
     }
 
     private var shouldShowFootTargetLine: Bool {
@@ -529,13 +535,156 @@ public struct GoodToShootOverlay: View {
                 }
             }
         }
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Multi-Subject Framing Overlay
+
+/// Multi-subject framing overlays rendering primary/secondary subject bounding boxes,
+/// role badges, occlusion warnings, and group balance auxiliary guidelines.
+public struct MultiSubjectFramingOverlay: View {
+    public let subjectBoxes: [SubjectOverlayBox]
+    public let activeHintKey: String
+
+    public init(subjectBoxes: [SubjectOverlayBox], activeHintKey: String) {
+        self.subjectBoxes = subjectBoxes
+        self.activeHintKey = activeHintKey
+    }
+
+    private var isMultiOcclusion: Bool {
+        activeHintKey == "multi.occlusion"
+    }
+
+    private var isMultiUnbalanced: Bool {
+        activeHintKey == "multi.unbalanced"
+    }
+
+    public var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+
+            ZStack {
+                // 1. Spacing balance auxiliary lines when unbalanced and count >= 2
+                if subjectBoxes.count >= 2 && isMultiUnbalanced {
+                    // Vertical frame center reference at 0.5 * width
+                    Path { path in
+                        path.move(to: CGPoint(x: w * 0.5, y: 0))
+                        path.addLine(to: CGPoint(x: w * 0.5, y: h))
+                    }
+                    .stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+
+                    let centers = subjectBoxes.map { box in
+                        CGPoint(
+                            x: (box.rect.origin.x + box.rect.width * 0.5) * w,
+                            y: (box.rect.origin.y + box.rect.height * 0.5) * h
+                        )
+                    }
+                    let comX = centers.map(\.x).reduce(0, +) / CGFloat(centers.count)
+                    let comY = centers.map(\.y).reduce(0, +) / CGFloat(centers.count)
+
+                    // Horizontal span line between leftmost and rightmost subject centers
+                    if let minXCenter = centers.min(by: { $0.x < $1.x }),
+                       let maxXCenter = centers.max(by: { $0.x < $1.x }) {
+                        Path { path in
+                            path.move(to: CGPoint(x: minXCenter.x, y: comY))
+                            path.addLine(to: CGPoint(x: maxXCenter.x, y: comY))
+                        }
+                        .stroke(Color.yellow.opacity(0.85), style: StrokeStyle(lineWidth: 2, dash: [6, 3]))
+
+                        // Vertical tick endpoints
+                        Path { path in
+                            path.move(to: CGPoint(x: minXCenter.x, y: comY - 6))
+                            path.addLine(to: CGPoint(x: minXCenter.x, y: comY + 6))
+                            path.move(to: CGPoint(x: maxXCenter.x, y: comY - 6))
+                            path.addLine(to: CGPoint(x: maxXCenter.x, y: comY + 6))
+                        }
+                        .stroke(Color.yellow.opacity(0.85), lineWidth: 2)
+                    }
+
+                    // Group center-of-mass marker
+                    Circle()
+                        .fill(Color.yellow)
+                        .frame(width: 8, height: 8)
+                        .position(x: comX, y: comY)
+
+                    Circle()
+                        .stroke(Color.yellow, lineWidth: 1.5)
+                        .frame(width: 20, height: 20)
+                        .position(x: comX, y: comY)
+
+                    Text("重心")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .background(Color.yellow)
+                        .clipShape(Capsule())
+                        .position(x: comX, y: comY - 16)
+                }
+
+                // 2. Framing overlays for each subject box
+                ForEach(subjectBoxes) { box in
+                    let rect = CGRect(
+                        x: box.rect.origin.x * w,
+                        y: box.rect.origin.y * h,
+                        width: box.rect.width * w,
+                        height: box.rect.height * h
+                    )
+
+                    if box.isPrimary {
+                        // Primary subject: green/cyan solid border + "主" badge when subjectBoxes.count > 1
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.cyan, lineWidth: 2)
+                            .frame(width: rect.width, height: rect.height)
+                            .position(x: rect.midX, y: rect.midY)
+
+                        if subjectBoxes.count > 1 {
+                            Text("主")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.cyan)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .position(x: rect.minX + 12, y: max(rect.minY - 10, 10))
+                        }
+                    } else {
+                        // Secondary subjects: amber/orange dashed border;
+                        // if activeHintKey == "multi.occlusion", highlight in red with "遮挡" badge.
+                        if isMultiOcclusion {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.red, lineWidth: 2)
+                                .frame(width: rect.width, height: rect.height)
+                                .position(x: rect.midX, y: rect.midY)
+
+                            Text("遮挡")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.red)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .position(x: rect.minX + 16, y: max(rect.minY - 10, 10))
+                        } else {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.orange, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                                .frame(width: rect.width, height: rect.height)
+                                .position(x: rect.midX, y: rect.midY)
+                        }
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 
 // MARK: - User Guidance HUD (Unified Container)
 
 /// Unified interactive composition guidance HUD integrating the horizon level indicator,
-/// target lines, breathing good-to-shoot frame, and the active hint pill.
+/// target lines, multi-subject framing overlays, breathing good-to-shoot frame, and the active hint pill.
 public struct UserGuidanceHUD: View {
     @Binding public var isEnabled: Bool
     public let output: ComposeOutput
@@ -543,7 +692,9 @@ public struct UserGuidanceHUD: View {
     public let rollDeg: Double
     public let pitchDeg: Double
     public let boundingBox: CGRect?
+    public let subjectBoxes: [SubjectOverlayBox]
     public let isFlatish: Bool
+    public let isEngineDegraded: Bool
     public let onSelectZoom: ((Float) -> Void)?
 
     public init(
@@ -553,7 +704,9 @@ public struct UserGuidanceHUD: View {
         rollDeg: Double,
         pitchDeg: Double = 0.0,
         boundingBox: CGRect? = nil,
+        subjectBoxes: [SubjectOverlayBox] = [],
         isFlatish: Bool = false,
+        isEngineDegraded: Bool = false,
         onSelectZoom: ((Float) -> Void)? = nil
     ) {
         self._isEnabled = isEnabled
@@ -562,8 +715,20 @@ public struct UserGuidanceHUD: View {
         self.rollDeg = rollDeg
         self.pitchDeg = pitchDeg
         self.boundingBox = boundingBox
+        self.subjectBoxes = subjectBoxes
         self.isFlatish = isFlatish
+        self.isEngineDegraded = isEngineDegraded
         self.onSelectZoom = onSelectZoom
+    }
+
+    public var activeHintKey: String {
+        if output.hintKey == "multi.occlusion" || output.activeFindingId == "multi.occlusion" {
+            return "multi.occlusion"
+        }
+        if output.hintKey == "multi.unbalanced" || output.activeFindingId == "multi.unbalanced" {
+            return "multi.unbalanced"
+        }
+        return output.hintKey ?? output.activeFindingId ?? ""
     }
 
     public var body: some View {
@@ -571,14 +736,46 @@ public struct UserGuidanceHUD: View {
             ZStack {
                 // 1. Target Lines and Thirds Grid
                 TargetLineOverlay(output: output, boundingBox: boundingBox)
+                    .allowsHitTesting(false)
 
                 // 2. Horizon Level Line & Reference Notches
                 HorizonIndicatorView(rollDeg: rollDeg, pitchDeg: pitchDeg, isFlatish: isFlatish)
+                    .allowsHitTesting(false)
 
-                // 3. Good-to-shoot confirmation overlay
-                GoodToShootOverlay(isGoodToShoot: output.isGoodToShoot, boundingBox: boundingBox)
+                // 3. Multi-Subject Framing Overlays (Primary, Secondary, Occlusion & Balance lines)
+                if !subjectBoxes.isEmpty {
+                    MultiSubjectFramingOverlay(subjectBoxes: subjectBoxes, activeHintKey: activeHintKey)
+                        .allowsHitTesting(false)
+                }
 
-                // 4. Active Hint Pill
+                // 4. Good-to-shoot confirmation overlay
+                GoodToShootOverlay(isGoodToShoot: output.isGoodToShoot, boundingBox: subjectBoxes.isEmpty ? boundingBox : nil)
+                    .allowsHitTesting(false)
+
+                // 5. Engine Degraded Warning Capsule
+                if isEngineDegraded {
+                    VStack {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.black)
+                            Text("构图引擎受限，仅基础取景")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.black)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.yellow)
+                        .clipShape(Capsule())
+                        .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
+                        .padding(.top, 96)
+
+                        Spacer()
+                    }
+                    .allowsHitTesting(false)
+                }
+
+                // 6. Active Hint Pill
                 VStack {
                     Spacer()
                     HintPillView(

@@ -14,11 +14,32 @@
     <string>1.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.stonewell.camera-assist</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>camera-assist</string>
+            </array>
+        </dict>
+    </array>
+    <key>UILaunchScreen</key>
+    <dict/>
     <key>NSCameraUsageDescription</key>
     <string>需要相机权限以进行实时取景与构图辅助</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>需要相册权限以保存高质量拍摄照片</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>需要相册写入权限以保存拍摄照片</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_camera-sync._tcp</string>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>需要局域网权限以在无网络环境下与帮拍设备进行点对点加密直连传输。</string>
 </dict>
 </plist>

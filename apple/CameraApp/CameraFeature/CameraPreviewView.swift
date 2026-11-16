@@ -60,9 +60,7 @@ public struct CameraPreviewView: UIViewRepresentable {
         let view = PreviewLayerContainerView()
         view.videoPreviewLayer.session = sessionManager.session
         view.onTapToFocus = { point in
-            Task {
-                await sessionManager.focusAndExpose(at: point)
-            }
+            sessionManager.focusAndExpose(at: point)
         }
         return view
     }
