@@ -1172,16 +1172,16 @@ public final class CameraCoordinator: ObservableObject {
         self.isSendingReference = true
         defer { self.isSendingReference = false }
 
-        let targetFraming: NormalizedRect
+        let targetFraming: SyncKit.NormalizedRect
         if let box = primaryBoundingBox {
-            targetFraming = NormalizedRect(
+            targetFraming = SyncKit.NormalizedRect(
                 x: Float(box.origin.x),
                 y: Float(box.origin.y),
                 width: Float(box.size.width),
                 height: Float(box.size.height)
             )
         } else {
-            targetFraming = NormalizedRect(x: 0.15, y: 0.15, width: 0.7, height: 0.7)
+            targetFraming = SyncKit.NormalizedRect(x: 0.15, y: 0.15, width: 0.7, height: 0.7)
         }
 
         let roll = telemetry.rollDeg
