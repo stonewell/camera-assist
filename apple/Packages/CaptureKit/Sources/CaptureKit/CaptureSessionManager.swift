@@ -20,6 +20,30 @@ import CoreMedia
 import AVFoundation
 #endif
 
+/// Errors and interruptions occurring during camera capture session execution.
+public enum CaptureSessionRuntimeError: Error, LocalizedError, Sendable, Equatable {
+    case hardwareInUseByAnotherClient(String)
+    case audioInterruption(String)
+    case backgroundSessionInterrupted(String)
+    case multiAppInterrupted(String)
+    case sessionRuntimeFailure(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .hardwareInUseByAnotherClient(let msg):
+            return "相机硬件已被其他应用占用: \(msg)"
+        case .audioInterruption(let msg):
+            return "音频输入中断: \(msg)"
+        case .backgroundSessionInterrupted(let msg):
+            return "后台运行导致相机断开: \(msg)"
+        case .multiAppInterrupted(let msg):
+            return "多任务前台模式导致相机不可用: \(msg)"
+        case .sessionRuntimeFailure(let msg):
+            return "相机运行时异常: \(msg)"
+        }
+    }
+}
+
 /// Comprehensive optical, exposure, and hardware metadata extracted per video sample frame.
 public struct CameraFrameMetadata: Sendable, Equatable {
     public let orientation: CGImagePropertyOrientation
@@ -119,6 +143,7 @@ public protocol CaptureSessionManaging: AnyObject, Sendable {
     var currentLens: CameraLensType { get }
     var currentThermalState: CameraThermalState { get }
     var effectiveFrameRate: Int { get }
+    var onRuntimeError: (@Sendable (CaptureSessionRuntimeError) -> Void)? { get set }
     func startSession() async throws
     func stopSession() async
     func switchLens(to lens: CameraLensType) async throws
@@ -143,6 +168,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
 
     public typealias FrameHandler = @Sendable (VideoSampleFrame) -> Void
     private var onFrameReceived: FrameHandler?
+    public var onRuntimeError: (@Sendable (CaptureSessionRuntimeError) -> Void)?
     private var thermalObserver: NSObjectProtocol?
 
     #if canImport(AVFoundation)
@@ -150,6 +176,9 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
     public private(set) var activeDevice: AVCaptureDevice?
     private var videoOutput: AVCaptureVideoDataOutput?
     public private(set) var photoOutput: AVCapturePhotoOutput?
+    private var sessionInterruptionObserver: (any NSObjectProtocol)?
+    private var sessionInterruptionEndedObserver: (any NSObjectProtocol)?
+    private var sessionRuntimeErrorObserver: (any NSObjectProtocol)?
     private let sessionQueue = DispatchQueue(label: "com.cameraassist.capturesession", qos: .userInitiated)
     private let analysisQueue = DispatchQueue(label: "com.cameraassist.analysis", qos: .userInteractive)
     #endif
@@ -186,6 +215,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
                 if let existing = self.session, existing.isRunning {
                     existing.stopRunning()
                 }
+                self.stopObservingSessionNotifications()
                 let sess = AVCaptureSession()
                 sess.beginConfiguration()
                 sess.sessionPreset = .photo
@@ -271,6 +301,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
                 sess.startRunning()
                 self.session = sess
                 self.isRunning = sess.isRunning
+                self.startObservingSessionNotifications(for: sess)
                 continuation.resume()
             }
         }
@@ -284,6 +315,7 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
     public func stopSession() async {
         stopThermalMonitoring()
         #if canImport(AVFoundation)
+        stopObservingSessionNotifications()
         rotationBridge.stopObserving()
         #endif
 
@@ -497,9 +529,95 @@ public final class CaptureSessionManager: NSObject, @unchecked Sendable, Capture
         onFrameReceived?(frame)
     }
 
+    /// Manually dispatches a runtime error, useful for testing and simulated interruption pipelines.
+    public func emitRuntimeError(_ error: CaptureSessionRuntimeError) {
+        onRuntimeError?(error)
+    }
+
+    #if canImport(AVFoundation)
+    /// Registers notification observers for session interruption, resumption, and runtime errors.
+    private func startObservingSessionNotifications(for session: AVCaptureSession) {
+        stopObservingSessionNotifications()
+
+        sessionInterruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.wasInterruptedNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            #if os(iOS) || targetEnvironment(macCatalyst)
+            var reasonInt: Int? = nil
+            if let num = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? NSNumber {
+                reasonInt = num.intValue
+            } else if let val = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int {
+                reasonInt = val
+            }
+            if let reasonInt = reasonInt, let reason = AVCaptureSession.InterruptionReason(rawValue: reasonInt) {
+                switch reason {
+                case .videoDeviceInUseByAnotherClient:
+                    self.onRuntimeError?(.hardwareInUseByAnotherClient("videoDeviceInUseByAnotherClient"))
+                case .audioDeviceInUseByAnotherClient:
+                    self.onRuntimeError?(.audioInterruption("audioDeviceInUseByAnotherClient"))
+                case .videoDeviceNotAvailableInBackground:
+                    self.onRuntimeError?(.backgroundSessionInterrupted("videoDeviceNotAvailableInBackground"))
+                case .videoDeviceNotAvailableWithMultipleForegroundApps:
+                    self.onRuntimeError?(.multiAppInterrupted("videoDeviceNotAvailableWithMultipleForegroundApps"))
+                default:
+                    self.onRuntimeError?(.sessionRuntimeFailure("Interruption reason: \(reasonInt)"))
+                }
+                return
+            }
+            #endif
+            self.onRuntimeError?(.sessionRuntimeFailure("AVCaptureSession was interrupted"))
+        }
+
+        sessionInterruptionEndedObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.interruptionEndedNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            self.isRunning = self.session?.isRunning ?? false
+        }
+
+        sessionRuntimeErrorObserver = NotificationCenter.default.addObserver(
+            forName: AVCaptureSession.runtimeErrorNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+            let errorMsg: String
+            if let error = notification.userInfo?[AVCaptureSessionErrorKey] as? Error {
+                errorMsg = error.localizedDescription
+            } else {
+                errorMsg = "Unknown capture session runtime failure"
+            }
+            self.isRunning = self.session?.isRunning ?? false
+            self.onRuntimeError?(.sessionRuntimeFailure(errorMsg))
+        }
+    }
+
+    /// Cleans up notification observers for session interruptions and errors.
+    private func stopObservingSessionNotifications() {
+        if let obs = sessionInterruptionObserver {
+            NotificationCenter.default.removeObserver(obs)
+            sessionInterruptionObserver = nil
+        }
+        if let obs = sessionInterruptionEndedObserver {
+            NotificationCenter.default.removeObserver(obs)
+            sessionInterruptionEndedObserver = nil
+        }
+        if let obs = sessionRuntimeErrorObserver {
+            NotificationCenter.default.removeObserver(obs)
+            sessionRuntimeErrorObserver = nil
+        }
+    }
+    #endif
+
     deinit {
         stopThermalMonitoring()
         #if canImport(AVFoundation)
+        stopObservingSessionNotifications()
         rotationBridge.stopObserving()
         #endif
     }

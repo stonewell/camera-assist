@@ -266,4 +266,100 @@ final class CaptureKitTests: XCTestCase {
         XCTAssertEqual(fitted.width, 400.0, accuracy: 0.001)
         XCTAssertEqual(fitted.height, 300.0, accuracy: 0.001)
     }
+
+    private final class RuntimeErrorBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _errors: [CaptureSessionRuntimeError] = []
+        var errors: [CaptureSessionRuntimeError] {
+            lock.lock()
+            defer { lock.unlock() }
+            return _errors
+        }
+        func append(_ error: CaptureSessionRuntimeError) {
+            lock.lock()
+            defer { lock.unlock() }
+            _errors.append(error)
+        }
+    }
+
+    func testCaptureSessionRuntimeErrorBubbling() {
+        let manager = CaptureSessionManager()
+        let errorBox = RuntimeErrorBox()
+
+        manager.onRuntimeError = { error in
+            errorBox.append(error)
+        }
+
+        manager.emitRuntimeError(.hardwareInUseByAnotherClient("videoDeviceInUseByAnotherClient"))
+        manager.emitRuntimeError(.audioInterruption("audioDeviceInUseByAnotherClient"))
+        manager.emitRuntimeError(.backgroundSessionInterrupted("videoDeviceNotAvailableInBackground"))
+        manager.emitRuntimeError(.sessionRuntimeFailure("AVCaptureSession was interrupted"))
+
+        let errors = errorBox.errors
+        XCTAssertEqual(errors.count, 4)
+        XCTAssertEqual(errors[0], .hardwareInUseByAnotherClient("videoDeviceInUseByAnotherClient"))
+        XCTAssertEqual(errors[1], .audioInterruption("audioDeviceInUseByAnotherClient"))
+        XCTAssertEqual(errors[2], .backgroundSessionInterrupted("videoDeviceNotAvailableInBackground"))
+        XCTAssertEqual(errors[3], .sessionRuntimeFailure("AVCaptureSession was interrupted"))
+
+        XCTAssertEqual(errors[0].errorDescription, "相机硬件已被其他应用占用: videoDeviceInUseByAnotherClient")
+        XCTAssertEqual(errors[1].errorDescription, "音频输入中断: audioDeviceInUseByAnotherClient")
+        XCTAssertEqual(errors[2].errorDescription, "后台运行导致相机断开: videoDeviceNotAvailableInBackground")
+        XCTAssertEqual(errors[3].errorDescription, "相机运行时异常: AVCaptureSession was interrupted")
+    }
+
+    func testCapturePhotoStorageFull() async throws {
+        let controller = CapturePhotoController()
+
+        // Insufficient storage: 50MB is below the 100MB threshold
+        controller.freeDiskSpaceOverride = 50 * 1024 * 1024
+        do {
+            _ = try await controller.capturePhoto()
+            XCTFail("Expected storageFull error but capture succeeded")
+        } catch let error as CapturePhotoError {
+            XCTAssertEqual(error, .storageFull)
+            XCTAssertEqual(error.errorDescription, "设备存储空间不足，无法保存照片。")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        // Sufficient storage: 500MB exceeds threshold, should succeed
+        controller.freeDiskSpaceOverride = 500 * 1024 * 1024
+        let result = try await controller.capturePhoto()
+        XCTAssertEqual(result.width, 5712)
+        XCTAssertEqual(result.height, 4284)
+        XCTAssertFalse(controller.isCapturing)
+    }
+
+    func testCapturePhotoTimeoutWatchdog() async throws {
+        let controller = CapturePhotoController()
+
+        // Shorten watchdog to 50ms and simulate capture delay > 2.5s (3_000_000_000 ns)
+        controller.captureTimeoutNanoseconds = 50_000_000
+        controller.simulateCaptureDelayNanoseconds = 3_000_000_000
+
+        do {
+            _ = try await controller.capturePhoto()
+            XCTFail("Expected timeout error but capture succeeded")
+        } catch let error as CapturePhotoError {
+            XCTAssertEqual(error, .timeout)
+            XCTAssertEqual(error.errorDescription, "24MP 拍照超时（> 2.5s），已自动重置。")
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertFalse(controller.isCapturing)
+    }
+
+    func testCapturePhotoSimulatedDelaySuccess() async throws {
+        let controller = CapturePhotoController()
+
+        controller.captureTimeoutNanoseconds = 500_000_000
+        controller.simulateCaptureDelayNanoseconds = 10_000_000 // 10ms
+
+        let result = try await controller.capturePhoto()
+        XCTAssertEqual(result.width, 5712)
+        XCTAssertEqual(result.height, 4284)
+        XCTAssertFalse(controller.isCapturing)
+    }
 }
