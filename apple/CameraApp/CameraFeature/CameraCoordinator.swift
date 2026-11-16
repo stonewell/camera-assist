@@ -1118,7 +1118,8 @@ public final class CameraCoordinator: ObservableObject {
             return
         }
 
-        if session.status == .pending || session.status == .connecting || strangerSyncStatus == .pending || strangerSyncStatus == .connecting {
+        let initialStatus = await session.status
+        if initialStatus == .pending || initialStatus == .connecting || strangerSyncStatus == .pending || strangerSyncStatus == .connecting {
             if let startTask = strangerStartTask {
                 _ = await withTaskGroup(of: Void.self) { group in
                     group.addTask {
@@ -1131,7 +1132,8 @@ public final class CameraCoordinator: ObservableObject {
                 }
             }
 
-            if session.status != .ready && strangerSyncStatus != .ready {
+            let currentStatus = await session.status
+            if currentStatus != .ready && strangerSyncStatus != .ready {
                 postBanner(
                     title: "等待路人连接",
                     message: "路人尚未扫描二维码或会话正在建立连接，请稍候连接就绪后重试",
@@ -1143,7 +1145,8 @@ public final class CameraCoordinator: ObservableObject {
             }
         }
 
-        if session.status == .failed || strangerSyncStatus == .failed {
+        let currentStatus = await session.status
+        if currentStatus == .failed || strangerSyncStatus == .failed {
             postBanner(
                 title: "连接失败",
                 message: "帮拍连接失败，请点击刷新口令重新连接",
@@ -1154,7 +1157,7 @@ public final class CameraCoordinator: ObservableObject {
             return
         }
 
-        if session.status == .expired || strangerSyncStatus == .expired {
+        if currentStatus == .expired || strangerSyncStatus == .expired {
             postBanner(
                 title: "口令已过期",
                 message: "帮拍口令已过期，请刷新口令",
@@ -1197,7 +1200,7 @@ public final class CameraCoordinator: ObservableObject {
         }
 
         let package = ReferencePackage(
-            sessionId: session.sessionId,
+            sessionId: await session.sessionId,
             createdAt: Date(),
             expiresAt: Date().addingTimeInterval(Double(strangerSessionRemainingSeconds)),
             ownerDeviceToken: "owner",
