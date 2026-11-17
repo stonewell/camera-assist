@@ -13,6 +13,7 @@ concurrency:
 jobs:
   core-quality-gate:
     name: Rust & Shared Quality Gate (${{ matrix.os }})
+    timeout-minutes: 25
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -79,6 +80,7 @@ jobs:
 
   license-audit:
     name: Cargo-Deny License & Advisory Audit
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
